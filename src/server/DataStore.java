@@ -7,8 +7,8 @@ import java.util.concurrent.LinkedBlockingDeque;
 
 /** Class that manages registeredUsers (usernames and passwords), connections (sections, tokenId) and an Item list (auctionList)*/
 public class DataStore {
-    private final ConcurrentHashMap<String, UserRecord> registeredUsers = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, UserRecord> registeredUsers = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>();
     private final LinkedBlockingDeque<Item> auctionQueue = new LinkedBlockingDeque<>();
 
     public static class UserRecord {
@@ -38,7 +38,7 @@ public class DataStore {
 //----------------------------------------------------------
 
     /** Returns True if user exists */
-    public boolean userExists(String username) {
+    public static boolean userExists(String username) {
         return registeredUsers.containsKey(username);
     }
     /** Adds user to registeredUsers after checking for duplicate username*/
@@ -49,7 +49,7 @@ public class DataStore {
         return true;
     }
     /** Returns True if username and password match records*/
-    public boolean validateUser(String username, String password) {
+    public static boolean validateUser(String username, String password) {
         UserRecord record = registeredUsers.get(username);
         return record != null && record.password.equals(password);
     }
@@ -69,7 +69,7 @@ public class DataStore {
 //              SESSION METHODS
 //----------------------------------------------------------
     /** Creates a new session, returns false if the session already exists*/
-    public boolean addSession(String tokenId, String username, String ipAddress, int port) {
+    public static boolean addSession(String tokenId, String username, String ipAddress, int port) {
         if(!activeSessions.containsKey(tokenId)){
             activeSessions.put(tokenId, new SessionRecord(tokenId, ipAddress, port));
             System.out.println("[DataStore]> Session " + username + " has been registered successfully.");
@@ -98,7 +98,7 @@ public class DataStore {
         return record != null ? record.username : null;
     }
     /** Returns true if user has an active session*/
-    public boolean isUserLoggedIn(String username) {
+    public static boolean isUserLoggedIn(String username) {
         for (SessionRecord s : activeSessions.values()) {
             if (s.username.equals(username)) return true;
         }
