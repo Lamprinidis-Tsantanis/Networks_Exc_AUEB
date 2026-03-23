@@ -10,6 +10,18 @@ public class AccountManager {
     }
 
     /**
+     * Checks username uniqueness and registers a new user account.
+     *
+     * @param username The desired username.
+     * @param password The desired password.
+     * @return true if registration succeeded, false if the username is already taken.
+     */
+    public boolean register(String username, String password) {
+        if (DataStore.userExists(username)) {return false;}
+        return dataStore.registerUser(username, password);
+    }
+
+    /**
      * Verifies credentials, checks if already logged in, and creates a session.
      *
      * @return token_id if successful, null if authentication fails or user is
