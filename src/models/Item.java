@@ -32,7 +32,7 @@ public class Item implements Serializable {
         return startBid;
     }
 
-    public int getAuctionDuration() {
+    public  int getAuctionDuration() {
         return auctionDuration;
     }
 

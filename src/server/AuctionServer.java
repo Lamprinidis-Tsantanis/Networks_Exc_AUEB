@@ -17,7 +17,7 @@ public class AuctionServer {
     private final ExecutorService threadPool;
 
     public AuctionServer() {
-        this.dataStore = new DataStore();
+        this.dataStore = DataStore.getInstance();
         this.accountManager = new AccountManager(dataStore);
         this.threadPool = Executors.newCachedThreadPool();
     }

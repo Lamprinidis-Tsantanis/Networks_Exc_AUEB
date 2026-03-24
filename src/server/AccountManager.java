@@ -14,7 +14,7 @@ public class AccountManager {
      *
      * @param username The desired username.
      * @param password The desired password.
-     * @return true if registration succeeded, false if the username is already taken.
+     * @return {@code true} if registration succeeded, false if the username is already taken.
      */
     public boolean register(String username, String password) {
         if (DataStore.userExists(username)) {return false;}
@@ -24,7 +24,7 @@ public class AccountManager {
     /**
      * Verifies credentials, checks if already logged in, and creates a session.
      *
-     * @return token_id if successful, null if authentication fails or user is
+     * @return {@code token_id} if successful, {@code null} if authentication fails or user is
      *         already logged in.
      */
     public String login(String username, String password, String ipAddress, int port) {

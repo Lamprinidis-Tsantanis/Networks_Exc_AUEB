@@ -10,7 +10,25 @@ public class DataStore {
     private static final ConcurrentHashMap<String, UserRecord> registeredUsers = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>();
     private final LinkedBlockingDeque<Item> auctionQueue = new LinkedBlockingDeque<>();
+    private final ConcurrentHashMap<String, String> itemSellerMap = new ConcurrentHashMap<>();
 
+//---------------------------------------------------------
+//             SINGLETON
+//---------------------------------------------------------
+    private static DataStore singletonInstance = null;
+    private DataStore(){}
+    public static DataStore getInstance(){
+        if (singletonInstance == null) {
+            singletonInstance = new DataStore();
+        }
+        return singletonInstance;
+    }
+
+
+
+//----------------------------------------------------------
+//              DATA CLASSES
+//----------------------------------------------------------
     public static class UserRecord {
         public String password;
         public int numAuctionsSeller;
@@ -26,12 +44,18 @@ public class DataStore {
         public String username;
         public String ipAddress;
         public int port;
+        /** creates sessionRecord <br>
+         * the token id is not registered in here because it is the key of the hashmap {@code activeSessions}
+         * @param username username of user
+         * @param ipAddress users ipAddress
+         * @param port port where user transmits */
         public SessionRecord(String username, String ipAddress, int port) {
             this.username = username;
             this.ipAddress = ipAddress;
             this.port = port;
         }
     }
+
 
 //----------------------------------------------------------
 //              USER METHODS
@@ -71,7 +95,7 @@ public class DataStore {
     /** Creates a new session, returns false if the session already exists*/
     public static boolean addSession(String tokenId, String username, String ipAddress, int port) {
         if(!activeSessions.containsKey(tokenId)){
-            activeSessions.put(tokenId, new SessionRecord(tokenId, ipAddress, port));
+            activeSessions.put(tokenId, new SessionRecord(username, ipAddress, port));
             System.out.println("[DataStore]> Session " + username + " has been registered successfully.");
             return true;
         }
@@ -85,7 +109,7 @@ public class DataStore {
     public void removeSession(String tokenId) {
         SessionRecord removed = activeSessions.remove(tokenId);
         if (removed != null) {
-            System.out.println("[DataStore] Session removed — token: " + tokenId + " | user: " + removed.username);
+            System.out.println("[DataStore]> Session removed — token: " + tokenId + " | user: " + removed.username);
         }
     }
     /** Returns session based on tokenId*/
@@ -109,9 +133,12 @@ public class DataStore {
 //----------------------------------------------------------
 
     /** Adds an item to the end off the auction queue*/
-    public void enqueueItem(Item item) {
-        auctionQueue.offer(item);
-        System.out.println("[DataStore] Item enqueued: " + item.getObjectId()+" | Queue size: " + auctionQueue.size());
+    public void enqueueItem(Item item,String sellerTokenId) {
+        if (auctionQueue.offer(item)) {
+            itemSellerMap.put(item.getObjectId(), sellerTokenId);
+            System.out.println("[DataStore] Item enqueued: " + item.getObjectId() + " | Queue size: " + auctionQueue.size());
+        }
+        System.out.println("[DataStore] Item NOT enqueued: " + item.getObjectId() );
     }
     /** Removes and returns the first item of the queue*/
     public Item dequeueItem() throws InterruptedException {
