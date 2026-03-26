@@ -137,6 +137,7 @@ public class DataStore {
         if (auctionQueue.offer(item)) {
             itemSellerMap.put(item.getObjectId(), sellerTokenId);
             System.out.println("[DataStore] Item enqueued: " + item.getObjectId() + " | Queue size: " + auctionQueue.size());
+            return;
         }
         System.out.println("[DataStore] Item NOT enqueued: " + item.getObjectId() );
     }

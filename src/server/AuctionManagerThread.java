@@ -15,6 +15,7 @@ public class AuctionManagerThread extends Thread {
     public AuctionManagerThread(DataStore dataStore,Item item){
         this.dataStore=dataStore;
         this.auctioningItem=item;
+        this.active=true;
     }
 
     public Item getAuctioningItem() {return auctioningItem;}
@@ -23,8 +24,9 @@ public class AuctionManagerThread extends Thread {
     public void startAuction() throws InterruptedException {
         Item auctioningItem =  dataStore.dequeueItem(); //blocks automatically
         auctionTimeLeft = auctioningItem.getAuctionDuration();
+
         System.out.println("\n[AuctionManagerThread]> Starting auction for item: "+ auctioningItem.getObjectId() + " | Duration: " + auctioningItem.getAuctionDuration() + "s");
-        run();
+        start();
     }
 
     @Override
