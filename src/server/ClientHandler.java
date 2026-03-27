@@ -20,6 +20,8 @@ public class ClientHandler implements Runnable {
     private final Socket socket;
     private final AccountManager accountManager;
     private final DataStore dataStore;
+    private ObjectOutputStream out;
+    private ObjectInputStream in;
 
     public ClientHandler(Socket socket, AccountManager accountManager, DataStore dataStore) {
         this.socket = socket;
@@ -37,9 +39,9 @@ public class ClientHandler implements Runnable {
         int clientPort = socket.getPort();
         System.out.println(TAG + "> Handling client: " + clientAddress + ":" + clientPort);
 
-        try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
-             ObjectInputStream  in  = new ObjectInputStream(socket.getInputStream())) {
-
+        try {
+            out = new ObjectOutputStream(socket.getOutputStream());
+            in = new ObjectInputStream(socket.getInputStream());
             while (true) {
                 Message request = readMessage(in, clientAddress);
                 if (request == null) break;
@@ -131,6 +133,7 @@ public class ClientHandler implements Runnable {
 
         String token = accountManager.login(username, password, clientAddress, clientPort);
         if (token != null) {
+            dataStore.registerClientHandler(token, this);
             Message resp = success("Login successful.");
             resp.put("token", token);
             return resp;
@@ -143,6 +146,7 @@ public class ClientHandler implements Runnable {
         if (token == null) {return error("Missing token.");}
         if (!dataStore.isSessionActive(token)) {return error("Session not found or already expired.");}
         accountManager.logout(token);
+        dataStore.unregisterClientHandler(token);
         return success("Logout successful.");
     }
 
@@ -194,6 +198,21 @@ public class ClientHandler implements Runnable {
             out.reset();
         } catch (IOException e) {
             System.err.println(TAG + "> Failed to send response: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Sends a Message to the client.
+     * Called by AuctionManagerThread to broadcast auction updates.
+     *
+     * @param message The message to send to the client
+     * @throws IOException if the send fails
+     */
+    public synchronized void sendMessage(Message message) throws IOException {
+        if (out != null) {
+            out.writeObject(message);
+            out.flush();
+            out.reset();
         }
     }
 

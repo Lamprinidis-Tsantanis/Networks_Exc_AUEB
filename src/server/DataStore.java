@@ -12,7 +12,9 @@ import java.util.concurrent.LinkedBlockingDeque;
 public class DataStore {
     private static final ConcurrentHashMap<String, UserRecord> registeredUsers = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>(); /**TokenId is Key*/
+    private static final ConcurrentHashMap<String, ClientHandler> activeClientHandlers = new ConcurrentHashMap<>();
     private final LinkedBlockingDeque<Item> auctionQueue = new LinkedBlockingDeque<>();
+    // ItemId SellerId Map
     private final ConcurrentHashMap<String, String> itemSellerMap = new ConcurrentHashMap<>();
 
     // ---------------------------------------------------------
@@ -160,6 +162,18 @@ public class DataStore {
         }
         return false;
     }
+    public void registerClientHandler(String tokenId, ClientHandler handler){
+        activeClientHandlers.put(tokenId, handler);
+    }
+    public ClientHandler getClientHandler(String tokenId){
+        return activeClientHandlers.get(tokenId);
+    }
+    public void unregisterClientHandler(String tokenId) {
+        ClientHandler removed = activeClientHandlers.remove(tokenId);
+        if (removed != null) {
+            System.out.println("[DataStore]> ClientHandler removed for token: " + tokenId);
+        }
+    }
     // ----------------------------------------------------------
     // AUCTION QUEUE METHODS
     // ----------------------------------------------------------
@@ -178,6 +192,16 @@ public class DataStore {
     /** Removes and returns the first item of the queue */
     public Item dequeueItem() throws InterruptedException {
         return auctionQueue.take();
+    }
+    public String getSellerToken(String itemId) {
+        return itemSellerMap.getOrDefault(itemId, null);
+    }
+    public String getAndRemoveSellerToken(String itemId) {
+        return itemSellerMap.remove(itemId);
+    }
+    public void removeItemFromAuction(String objectId) {
+        itemSellerMap.remove(objectId);
+        System.out.println("[DataStore]> Item removed from auction: " + objectId);
     }
 
     /** Removes and returns the first item of the queue */
