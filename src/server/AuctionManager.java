@@ -9,7 +9,6 @@ public class AuctionManager {
     public AuctionManager(DataStore dataStore){
         this.dataStore=dataStore;
     }
-
     /**
      * Validates the tokenId and adds items into the auctionQueue
      * Uses the enqueue of Datastore and saves it in its correct datastructure
@@ -17,8 +16,7 @@ public class AuctionManager {
      * @param itemList List of items that a user is putting in auction.
      * @return {@code true} if the tokenId is successfully validated and the list contains items<br>
      * {@code false} if the tokenId is not active or the list is empty or null<br><br><br>
-     * {@code putting a lot of items may overload the datastore and provide no Error, only record in terminal by enqueue }
-     *
+     * {@code putting a lot of items may overload the datastore and provide no Error, only record in terminal by DataStore.enqueue }
      */
     public boolean getAuctionRequest(String tokenId, List<Item> itemList)
     {
@@ -35,7 +33,7 @@ public class AuctionManager {
             Item nextItem = dataStore.dequeueItem();
             System.out.println("[AuctionManager]> Starting auction for Item: "+nextItem.getObjectId());
             AuctionManagerThread currentAuction = new AuctionManagerThread(dataStore,nextItem);
-            currentAuction.start();
+            currentAuction.startAuction();
         } catch (InterruptedException e) {
             System.err.println("[AuctionManager]> Interrupted: " + e.getMessage());
         }

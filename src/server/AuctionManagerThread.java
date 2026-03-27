@@ -22,7 +22,6 @@ public class AuctionManagerThread extends Thread {
     public String getAuctioningItemDescription(){return auctioningItem.getDescription();}
 
     public void startAuction() throws InterruptedException {
-        Item auctioningItem =  dataStore.dequeueItem(); //blocks automatically
         auctionTimeLeft = auctioningItem.getAuctionDuration();
 
         System.out.println("\n[AuctionManagerThread]> Starting auction for item: "+ auctioningItem.getObjectId() + " | Duration: " + auctioningItem.getAuctionDuration() + "s");
@@ -47,6 +46,7 @@ public class AuctionManagerThread extends Thread {
         }
         finalizeAuction();
     }
+    /** {@code needs implementation}*/
     public void finalizeAuction(){};
     public boolean placeBid(){return false;}
 }

@@ -8,7 +8,7 @@ import java.util.concurrent.LinkedBlockingDeque;
 /** Class that manages registeredUsers (usernames and passwords), connections (sections, tokenId) and an Item list (auctionList)*/
 public class DataStore {
     private static final ConcurrentHashMap<String, UserRecord> registeredUsers = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>(); /**TokenId is Key*/
     private final LinkedBlockingDeque<Item> auctionQueue = new LinkedBlockingDeque<>();
     private final ConcurrentHashMap<String, String> itemSellerMap = new ConcurrentHashMap<>();
 
