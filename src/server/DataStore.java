@@ -5,30 +5,34 @@ import models.Item;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 
-/** Class that manages registeredUsers (usernames and passwords), connections (sections, tokenId) and an Item list (auctionList)*/
+/**
+ * Class that manages registeredUsers (usernames and passwords), connections
+ * (sections, tokenId) and an Item list (auctionList)
+ */
 public class DataStore {
     private static final ConcurrentHashMap<String, UserRecord> registeredUsers = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>(); /**TokenId is Key*/
     private final LinkedBlockingDeque<Item> auctionQueue = new LinkedBlockingDeque<>();
     private final ConcurrentHashMap<String, String> itemSellerMap = new ConcurrentHashMap<>();
 
-//---------------------------------------------------------
-//             SINGLETON
-//---------------------------------------------------------
+    // ---------------------------------------------------------
+    // SINGLETON
+    // ---------------------------------------------------------
     private static DataStore singletonInstance = null;
-    private DataStore(){}
-    public static DataStore getInstance(){
+
+    private DataStore() {
+    }
+
+    public static DataStore getInstance() {
         if (singletonInstance == null) {
             singletonInstance = new DataStore();
         }
         return singletonInstance;
     }
 
-
-
-//----------------------------------------------------------
-//              DATA CLASSES
-//----------------------------------------------------------
+    // ----------------------------------------------------------
+    // DATA CLASSES
+    // ----------------------------------------------------------
     public static class UserRecord {
         public String password;
         public int numAuctionsSeller;
@@ -40,15 +44,21 @@ public class DataStore {
             this.numAuctionsBidder = 0;
         }
     }
+
     public static class SessionRecord {
         public String username;
         public String ipAddress;
         public int port;
-        /** creates sessionRecord <br>
-         * the token id is not registered in here because it is the key of the hashmap {@code activeSessions}
-         * @param username username of user
+
+        /**
+         * creates sessionRecord <br>
+         * the token id is not registered in here because it is the key of the hashmap
+         * {@code activeSessions}
+         * 
+         * @param username  username of user
          * @param ipAddress users ipAddress
-         * @param port port where user transmits */
+         * @param port      port where user transmits
+         */
         public SessionRecord(String username, String ipAddress, int port) {
             this.username = username;
             this.ipAddress = ipAddress;
@@ -56,100 +66,133 @@ public class DataStore {
         }
     }
 
-
-//----------------------------------------------------------
-//              USER METHODS
-//----------------------------------------------------------
+    // ----------------------------------------------------------
+    // USER METHODS
+    // ----------------------------------------------------------
 
     /** Returns True if user exists */
     public static boolean userExists(String username) {
         return registeredUsers.containsKey(username);
     }
-    /** Adds user to registeredUsers after checking for duplicate username*/
+
+    /** Adds user to registeredUsers after checking for duplicate username */
     public boolean registerUser(String username, String password) {
-        if (userExists(username)) {return false;}
+        if (userExists(username)) {
+            return false;
+        }
         registeredUsers.put(username, new UserRecord(password));
         System.out.println("[DataStore]> User " + username + " has been registered successfully.");
         return true;
     }
-    /** Returns True if username and password match records*/
+
+    /** Returns True if username and password match records */
     public static boolean validateUser(String username, String password) {
         UserRecord record = registeredUsers.get(username);
         return record != null && record.password.equals(password);
     }
-    /** Increments users BidderCount by 1, Returns False if username doesn't exist*/
+
+    /**
+     * Increments users BidderCount by 1, Returns False if username doesn't exist
+     */
     public boolean addBidderCount(String username) {
         UserRecord record = registeredUsers.get(username);
-        if (record != null){record.numAuctionsBidder++;return true;}
+        if (record != null) {
+            record.numAuctionsBidder++;
+            return true;
+        }
         return false;
     }
-    /** Increments users SellerCount by 1, Returns False if username doesn't exist*/
+
+    /**
+     * Increments users SellerCount by 1, Returns False if username doesn't exist
+     */
     public boolean addSellerCount(String username) {
         UserRecord record = registeredUsers.get(username);
-        if (record != null){record.numAuctionsSeller++;return true;}
+        if (record != null) {
+            record.numAuctionsSeller++;
+            return true;
+        }
         return false;
     }
-//----------------------------------------------------------
-//              SESSION METHODS
-//----------------------------------------------------------
-    /** Creates a new session, returns false if the session already exists*/
+
+    // ----------------------------------------------------------
+    // SESSION METHODS
+    // ----------------------------------------------------------
+    /** Creates a new session, returns false if the session already exists */
     public static boolean addSession(String tokenId, String username, String ipAddress, int port) {
-        if(!activeSessions.containsKey(tokenId)){
+        if (!activeSessions.containsKey(tokenId)) {
             activeSessions.put(tokenId, new SessionRecord(username, ipAddress, port));
             System.out.println("[DataStore]> Session " + username + " has been registered successfully.");
             return true;
         }
         return false;
     }
-    /** Checks if Session is recorded in activeSessions*/
+
+    /** Checks if Session is recorded in activeSessions */
     public boolean isSessionActive(String tokenId) {
         return activeSessions.containsKey(tokenId);
     }
-    /** removes Session mapped with said tokenId from activeSessions*/
+
+    /** removes Session mapped with said tokenId from activeSessions */
     public void removeSession(String tokenId) {
         SessionRecord removed = activeSessions.remove(tokenId);
         if (removed != null) {
             System.out.println("[DataStore]> Session removed — token: " + tokenId + " | user: " + removed.username);
         }
     }
-    /** Returns session based on tokenId*/
+
+    /** Returns session based on tokenId */
     public SessionRecord getSession(String tokenId) {
         return activeSessions.get(tokenId);
     }
-    /** Returns username based on tokenId*/
+
+    /** Returns username based on tokenId */
     public String getUsernameByToken(String tokenId) {
         SessionRecord record = activeSessions.get(tokenId);
         return record != null ? record.username : null;
     }
-    /** Returns true if user has an active session*/
+
+    /** Returns true if user has an active session */
     public static boolean isUserLoggedIn(String username) {
         for (SessionRecord s : activeSessions.values()) {
-            if (s.username.equals(username)) return true;
+            if (s.username.equals(username))
+                return true;
         }
         return false;
     }
-//----------------------------------------------------------
-//              AUCTION QUEUE METHODS
-//----------------------------------------------------------
+    // ----------------------------------------------------------
+    // AUCTION QUEUE METHODS
+    // ----------------------------------------------------------
 
-    /** Adds an item to the end off the auction queue*/
-    public void enqueueItem(Item item,String sellerTokenId) {
+    /** Adds an item to the end off the auction queue */
+    public void enqueueItem(Item item, String sellerTokenId) {
         if (auctionQueue.offer(item)) {
             itemSellerMap.put(item.getObjectId(), sellerTokenId);
-            System.out.println("[DataStore] Item enqueued: " + item.getObjectId() + " | Queue size: " + auctionQueue.size());
+            System.out.println(
+                    "[DataStore] Item enqueued: " + item.getObjectId() + " | Queue size: " + auctionQueue.size());
             return;
         }
-        System.out.println("[DataStore] Item NOT enqueued: " + item.getObjectId() );
+        System.out.println("[DataStore] Item NOT enqueued: " + item.getObjectId());
     }
-    /** Removes and returns the first item of the queue*/
+
+    /** Removes and returns the first item of the queue */
     public Item dequeueItem() throws InterruptedException {
         return auctionQueue.take();
     }
-    /** Removes and returns the first item of the queue*/
-    public int getQueueSize(){
+
+    /** Removes and returns the first item of the queue */
+    public int getQueueSize() {
         return auctionQueue.size();
     }
 
-
+    /**
+     * Retrieves the seller's tokenId based on the item's objectId.
+     * 
+     * @param objectId The ID of the item.
+     * @return The tokenId of the seller, or null if not found.
+     */
+    public String getItemSeller(String objectId) {
+        return itemSellerMap.get(objectId);
+    }
 
 }

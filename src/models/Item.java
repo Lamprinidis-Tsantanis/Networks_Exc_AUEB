@@ -5,12 +5,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class Item implements Serializable {
-    private static final long serialVersionUID = 1L; // Σημαντικό για το ObjectOutputStream
+    private static final long serialVersionUID = 1L; // needed for ObjectOutputStream
 
     private String objectId;
     private String description;
     private double startBid;
-    private int auctionDuration; // Σε δευτερόλεπτα
+    private int auctionDuration; // in seconds
 
     public Item(String objectId, String description, double startBid, int auctionDuration) {
         this.objectId = objectId;
@@ -32,13 +32,11 @@ public class Item implements Serializable {
         return startBid;
     }
 
-    public  int getAuctionDuration() {
+    public int getAuctionDuration() {
         return auctionDuration;
     }
 
-    // --- Διαχείριση Αρχείων (T-02) ---
-
-    // Γράφει το αντικείμενο σε αρχείο .txt
+    // writes the object on a .txt file
     public void toFile(String directoryPath) throws IOException {
         File file = new File(directoryPath, this.objectId + ".txt");
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
@@ -49,7 +47,7 @@ public class Item implements Serializable {
         }
     }
 
-    // Διαβάζει ένα αρχείο .txt και δημιουργεί ένα Item
+    // reads the .txt file and creates an Item
     public static Item fromFile(File file) throws IOException {
         Map<String, String> data = new HashMap<>();
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
