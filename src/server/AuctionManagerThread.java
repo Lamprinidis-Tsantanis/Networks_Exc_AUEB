@@ -137,9 +137,6 @@ public class AuctionManagerThread extends Thread {
             bidLock.unlock();
         }
 
-        // Broadcast new bid to all active peers (outside lock to avoid deadlock)
-        broadcastBidUpdate(tokenId, objectId, bidAmount);
-
         // Return success message with updated state
         Message response = createSuccessMessage("Bid placed successfully. " +
                 "Current highest bid: " + highestBid);
@@ -160,6 +157,4 @@ public class AuctionManagerThread extends Thread {
         msg.put("message", text);
         return msg;
     }
-    /** To be Implemented*/
-    private void broadcastBidUpdate(String biddingTokenId, String objectId, double newBidAmount) {}
 }
