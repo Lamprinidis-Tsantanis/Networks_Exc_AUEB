@@ -235,10 +235,6 @@ public class AuctionManagerThread extends Thread {
             this.highestBid = bidAmount;
             this.highestBidderToken = tokenId;
 
-            // reset the timer
-            this.auctionTimeLeft = auctioningItem.getAuctionDuration();
-            System.out.println("[AuctionManagerThread]> Timer reset to " + this.auctionTimeLeft + " seconds.");
-
             // Get username of bidder
             String bidderUsername = dataStore.getUsernameByToken(tokenId);
             System.out.println("[AuctionManagerThread]> New bid placed: " + bidAmount +
