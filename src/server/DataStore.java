@@ -11,7 +11,8 @@ import java.util.concurrent.LinkedBlockingDeque;
  */
 public class DataStore {
     private static final ConcurrentHashMap<String, UserRecord> registeredUsers = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>(); /**TokenId is Key*/
+    private static final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>();
+    /** TokenId is Key */
     private static final ConcurrentHashMap<String, ClientHandler> activeClientHandlers = new ConcurrentHashMap<>();
     private final LinkedBlockingDeque<Item> auctionQueue = new LinkedBlockingDeque<>();
     // ItemId SellerId Map
@@ -96,25 +97,21 @@ public class DataStore {
     /**
      * Increments users BidderCount by 1, Returns False if username doesn't exist
      */
-    public boolean addBidderCount(String username) {
+    public void addBidderCount(String username) {
         UserRecord record = registeredUsers.get(username);
         if (record != null) {
             record.numAuctionsBidder++;
-            return true;
         }
-        return false;
     }
 
     /**
      * Increments users SellerCount by 1, Returns False if username doesn't exist
      */
-    public boolean addSellerCount(String username) {
+    public void addSellerCount(String username) {
         UserRecord record = registeredUsers.get(username);
         if (record != null) {
             record.numAuctionsSeller++;
-            return true;
         }
-        return false;
     }
 
     // ----------------------------------------------------------
@@ -162,12 +159,15 @@ public class DataStore {
         }
         return false;
     }
-    public void registerClientHandler(String tokenId, ClientHandler handler){
+
+    public void registerClientHandler(String tokenId, ClientHandler handler) {
         activeClientHandlers.put(tokenId, handler);
     }
-    public ClientHandler getClientHandler(String tokenId){
+
+    public ClientHandler getClientHandler(String tokenId) {
         return activeClientHandlers.get(tokenId);
     }
+
     public void unregisterClientHandler(String tokenId) {
         ClientHandler removed = activeClientHandlers.remove(tokenId);
         if (removed != null) {
@@ -193,12 +193,15 @@ public class DataStore {
     public Item dequeueItem() throws InterruptedException {
         return auctionQueue.take();
     }
+
     public String getSellerToken(String itemId) {
         return itemSellerMap.getOrDefault(itemId, null);
     }
+
     public String getAndRemoveSellerToken(String itemId) {
         return itemSellerMap.remove(itemId);
     }
+
     public void removeItemFromAuction(String objectId) {
         itemSellerMap.remove(objectId);
         System.out.println("[DataStore]> Item removed from auction: " + objectId);
@@ -219,4 +222,8 @@ public class DataStore {
         return itemSellerMap.get(objectId);
     }
 
+    /** Returns the map of all active sessions */
+    public java.util.concurrent.ConcurrentHashMap<String, SessionRecord> getActiveSessions() {
+        return activeSessions;
+    }
 }

@@ -5,16 +5,20 @@ import models.Message;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+
 /**
  * Class that manages the core functionalities of bidding.
  * It is only used by Auction Manager, but it is a separate file for
  * read-ability
  */
 public class AuctionManagerThread extends Thread {
-    private DataStore dataStore;
-    private Item auctioningItem;
-    private String sellerToken;
-    private final ConcurrentHashMap <String, String> activeClients =  new ConcurrentHashMap<>();
+    private final DataStore dataStore;
+    private final AuctionManager auctionManager;
+    private final Item auctioningItem;
+    private final String sellerToken;
+    private final ConcurrentHashMap<String, String> activeClients = new ConcurrentHashMap<>();
+    private final java.util.Set<String> activeBidders = java.util.Collections
+            .newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
 
     // bid state
     private double highestBid;
@@ -25,7 +29,8 @@ public class AuctionManagerThread extends Thread {
     private long auctionTimeLeft;// in seconds
     private boolean active;
 
-    public AuctionManagerThread(DataStore dataStore, Item item, String sellerToken) {
+    public AuctionManagerThread(AuctionManager auctionManager, DataStore dataStore, Item item, String sellerToken) {
+        this.auctionManager = auctionManager;
         this.dataStore = dataStore;
         this.auctioningItem = item;
         this.active = true;
@@ -55,11 +60,26 @@ public class AuctionManagerThread extends Thread {
         return active;
     }
 
-    public void startAuction() throws InterruptedException {
-        Item auctioningItem = dataStore.dequeueItem(); // blocks automatically
-        auctionTimeLeft = auctioningItem.getAuctionDuration();
+    public String getSellerToken() {
+        return sellerToken;
+    }
 
-        System.out.println("\n[AuctionManagerThread]> Starting auction for item: "+ auctioningItem.getObjectId() + " | Duration: " + auctioningItem.getAuctionDuration() + "s");
+    public void cancelAuction() {
+        this.active = false;
+        this.interrupt(); // Break out of the Thread.sleep() loop
+    }
+
+    public java.util.Set<String> getActiveBidders() {
+        return activeBidders;
+    }
+
+    public void startAuction() throws InterruptedException {
+        // THESE NEED TO BE REMOVED I THINK
+        // Item auctioningItem = dataStore.dequeueItem(); // blocks automatically
+        // auctionTimeLeft = auctioningItem.getAuctionDuration();
+
+        System.out.println("\n[AuctionManagerThread]> Starting auction for item: " + auctioningItem.getObjectId()
+                + " | Duration: " + auctioningItem.getAuctionDuration() + "s");
         start();
     }
 
@@ -75,12 +95,14 @@ public class AuctionManagerThread extends Thread {
                             " seconds left for: " + auctioningItem.getObjectId());
                 }
             } catch (InterruptedException e) {
-                System.err.println("[AuctionManagerThread]> Auction interrupted: " + auctioningItem.getObjectId() +"\n"+e.getMessage());
+                System.err.println("[AuctionManagerThread]> Auction interrupted: " + auctioningItem.getObjectId() + "\n"
+                        + e.getMessage());
                 active = false;
             }
         }
         finalizeAuction();
     }
+
     public double getCurrentHighestBid() {
         bidLock.lock();
         try {
@@ -99,10 +121,10 @@ public class AuctionManagerThread extends Thread {
         }
     }
 
-    /** {@code needs implementation}*/
-    public void finalizeAuction(){
+    /** {@code needs implementation} */
+    public void finalizeAuction() {
         bidLock.lock();
-        try{
+        try {
             System.out.println("\n[AuctionManagerThread]> === AUCTION COMPLETE ===");
             System.out.println("[AuctionManagerThread]> Item: " + auctioningItem.getObjectId());
             System.out.println("[AuctionManagerThread]> Winner: " +
@@ -119,7 +141,7 @@ public class AuctionManagerThread extends Thread {
                 String winnerUsername = dataStore.getUsernameByToken(highestBidderToken);
                 String sellerUsername = dataStore.getUsernameByToken(sellerToken);
 
-                // SEND AUCTION_WON to highest bidder
+                // SEND AUCTION_WON to the highest bidder
                 Message auctionWonMsg = new Message(Message.MessageType.AUCTION_RESULT);
                 auctionWonMsg.put("message", "Congratulations! You won the auction!");
                 auctionWonMsg.put("status", "WON");
@@ -176,6 +198,12 @@ public class AuctionManagerThread extends Thread {
                 System.out.println("[AuctionManagerThread]> AUCTION_FAILED sent to: " + sellerUsername);
             }
 
+            try {
+                auctionManager.onAuctionComplete(auctioningItem, highestBidderToken, highestBid);
+            } catch (InterruptedException e) {
+                System.err.println("[AuctionManagerThread]> Failed to start next auction: " + e.getMessage());
+            }
+
         } finally {
             bidLock.unlock();
         }
@@ -207,12 +235,33 @@ public class AuctionManagerThread extends Thread {
             this.highestBid = bidAmount;
             this.highestBidderToken = tokenId;
 
+            // reset the timer
+            this.auctionTimeLeft = auctioningItem.getAuctionDuration();
+            System.out.println("[AuctionManagerThread]> Timer reset to " + this.auctionTimeLeft + " seconds.");
+
             // Get username of bidder
             String bidderUsername = dataStore.getUsernameByToken(tokenId);
             System.out.println("[AuctionManagerThread]> New bid placed: " + bidAmount +
                     " | Bidder: " + bidderUsername + " | Item: " + objectId);
+            activeBidders.add(tokenId);
         } finally {
             bidLock.unlock();
+        }
+
+        // Broadcast the new highest bid to all active clients
+        Message updateMsg = new Message(Message.MessageType.AUCTION_RESULT);
+        updateMsg.put("status", "NEW_HIGHEST_BID");
+        updateMsg.put("message", "A new bid has been placed!");
+        updateMsg.put("object_id", objectId);
+        updateMsg.put("current_bid", highestBid);
+
+        // Iterate through all active sessions in the DataStore and send them the update
+        // We skip the person who just placed the bid, as they get the direct response
+        // message
+        for (String activeClientToken : dataStore.getActiveSessions().keySet()) {
+            if (!activeClientToken.equals(tokenId)) {
+                broadcastMessageToClient(activeClientToken, updateMsg);
+            }
         }
 
         // Return success message with updated state
@@ -231,7 +280,8 @@ public class AuctionManagerThread extends Thread {
      * @param message The message to send
      */
     private void broadcastMessageToClient(String tokenId, Message message) {
-        if (tokenId == null) return;
+        if (tokenId == null)
+            return;
 
         // Check if client is in active clients map
         ClientHandler handler = dataStore.getClientHandler(tokenId);

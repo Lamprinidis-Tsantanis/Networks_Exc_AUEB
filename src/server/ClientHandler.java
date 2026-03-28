@@ -19,18 +19,21 @@ public class ClientHandler implements Runnable {
 
     private final Socket socket;
     private final AccountManager accountManager;
+    private final AuctionManager auctionManager;
     private final DataStore dataStore;
     private ObjectOutputStream out;
     private ObjectInputStream in;
 
-    public ClientHandler(Socket socket, AccountManager accountManager, DataStore dataStore) {
+    public ClientHandler(Socket socket, AccountManager accountManager, AuctionManager auctionManager,
+            DataStore dataStore) {
         this.socket = socket;
         this.accountManager = accountManager;
+        this.auctionManager = auctionManager;
         this.dataStore = dataStore;
     }
 
     // ----------------------------------------------------------------
-    //  Main loop
+    // Main loop
     // ----------------------------------------------------------------
 
     @Override
@@ -44,9 +47,11 @@ public class ClientHandler implements Runnable {
             in = new ObjectInputStream(socket.getInputStream());
             while (true) {
                 Message request = readMessage(in, clientAddress);
-                if (request == null) break;
+                if (request == null)
+                    break;
 
-                System.out.println(TAG+"> Received "+ request.getType()+" from "+clientAddress+":"+clientPort);
+                System.out
+                        .println(TAG + "> Received " + request.getType() + " from " + clientAddress + ":" + clientPort);
                 Message response = route(request, clientAddress, clientPort);
                 send(out, response);
             }
@@ -77,7 +82,7 @@ public class ClientHandler implements Runnable {
     }
 
     // ----------------------------------------------------------------
-    //  Router
+    // Router
     // ----------------------------------------------------------------
 
     /**
@@ -87,16 +92,16 @@ public class ClientHandler implements Runnable {
         return switch (request.getType()) {
 
             // -- Account management --
-            case REGISTER  -> handleRegister(request);
-            case LOGIN     -> handleLogin(request, clientAddress, clientPort);
-            case LOGOUT    -> handleLogout(request);
+            case REGISTER -> handleRegister(request);
+            case LOGIN -> handleLogin(request, clientAddress, clientPort);
+            case LOGOUT -> handleLogout(request);
             case CHECK_ACTIVE -> handleCheckActive(request);
 
             // -- Auction management --
-            case REQUEST_AUCTION     -> handleRequestAuction(request);
+            case REQUEST_AUCTION -> handleRequestAuction(request);
             case GET_CURRENT_AUCTION -> handleGetCurrentAuction(request);
             case GET_AUCTION_DETAILS -> handleGetAuctionDetails(request);
-            case PLACE_BID           -> handlePlaceBid(request);
+            case PLACE_BID -> handlePlaceBid(request);
 
             // Clients should NOT send SUCCESS/ERROR
             default -> error("Unsupported message type: " + request.getType());
@@ -104,7 +109,7 @@ public class ClientHandler implements Runnable {
     }
 
     // ----------------------------------------------------------------
-    //  Account handlers
+    // Account handlers
     // ----------------------------------------------------------------
 
     private Message handleRegister(Message req) {
@@ -116,9 +121,9 @@ public class ClientHandler implements Runnable {
         }
 
         boolean ok = accountManager.register(username, password);
-        if(ok){
+        if (ok) {
             return success("Register successful.");
-        }else{
+        } else {
             return error("Register failed. Account already exists.");
         }
     }
@@ -143,8 +148,12 @@ public class ClientHandler implements Runnable {
 
     private Message handleLogout(Message req) {
         String token = req.getString("token");
-        if (token == null) {return error("Missing token.");}
-        if (!dataStore.isSessionActive(token)) {return error("Session not found or already expired.");}
+        if (token == null) {
+            return error("Missing token.");
+        }
+        if (!dataStore.isSessionActive(token)) {
+            return error("Session not found or already expired.");
+        }
         accountManager.logout(token);
         dataStore.unregisterClientHandler(token);
         return success("Logout successful.");
@@ -159,31 +168,64 @@ public class ClientHandler implements Runnable {
     }
 
     // ----------------------------------------------------------------
-    //  Auction handlers — delegates to AuctionManager (to be implemented)
+    // Auction handlers — delegates to AuctionManager (to be implemented)
     // ----------------------------------------------------------------
 
     private Message handleRequestAuction(Message req) {
-        // TODO: validate session token, then delegate to AuctionManager.requestAuction(req)
-        return error("REQUEST_AUCTION not yet implemented.");
+        String token = req.getString("token");
+        // Warning: This assumes the client passed a List<Item> inside the payload
+        @SuppressWarnings("unchecked")
+        java.util.List<models.Item> items = (java.util.List<models.Item>) req.get("items");
+
+        boolean ok = auctionManager.getAuctionRequest(token, items);
+        if (ok)
+            return success("Items added to auction queue.");
+        return error("Failed to add items to queue. Invalid token or empty list.");
     }
 
     private Message handleGetCurrentAuction(Message req) {
-        // TODO: delegate to AuctionManager.getCurrentAuction()
-        return error("GET_CURRENT_AUCTION not yet implemented.");
+        String[] current = auctionManager.sendCurrentAuction();
+        if (current == null)
+            return error("No active auction.");
+
+        Message resp = success("Current auction retrieved.");
+        resp.put("object_id", current[0]);
+        resp.put("description", current[1]);
+        return resp;
     }
 
     private Message handleGetAuctionDetails(Message req) {
-        // TODO: delegate to AuctionManager.getAuctionDetails(req)
-        return error("GET_AUCTION_DETAILS not yet implemented.");
+        Object[] details = auctionManager.sendAuctionDetails();
+        if (details == null)
+            return error("No active auction.");
+
+        Message resp = success("Auction details retrieved.");
+        resp.put("seller_token", details[0]);
+        resp.put("highest_bid", details[1]);
+        resp.put("remaining_time", details[2]);
+        return resp;
     }
 
     private Message handlePlaceBid(Message req) {
-        // TODO: validate session token, then delegate to AuctionManager.placeBid(req)
-        return error("PLACE_BID not yet implemented.");
+        String token = req.getString("token");
+        String objectId = req.getString("object_id");
+
+        // Safely extract double from the payload
+        Double bidAmount = null;
+        Object val = req.get("bid_amount");
+        if (val instanceof Double)
+            bidAmount = (Double) val;
+        else if (val instanceof Integer)
+            bidAmount = ((Integer) val).doubleValue();
+
+        if (token == null || objectId == null || bidAmount == null)
+            return error("Missing parameters.");
+
+        return auctionManager.placeBid(token, objectId, bidAmount);
     }
 
     // ----------------------------------------------------------------
-    //  Helpers
+    // Helpers
     // ----------------------------------------------------------------
 
     /**

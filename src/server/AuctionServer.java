@@ -14,15 +14,30 @@ import java.util.concurrent.Executors;
 public class AuctionServer {
     private final DataStore dataStore;
     private final AccountManager accountManager;
+    private final AuctionManager auctionManager;
     private final ExecutorService threadPool;
 
     public AuctionServer() {
         this.dataStore = DataStore.getInstance();
         this.accountManager = new AccountManager(dataStore);
+        this.auctionManager = new AuctionManager(dataStore);
         this.threadPool = Executors.newCachedThreadPool();
     }
 
     public void start() {
+
+        /*
+         * Starting the continuous background auction queue loop in its own thread
+         * so it doesn't block the server from accepting new client connections
+         */
+        new Thread(() -> {
+            try {
+                auctionManager.startAuction();
+            } catch (InterruptedException e) {
+                System.err.println("[AuctionServer]> Auction queue interrupted.");
+            }
+        }).start();
+
         try (ServerSocket serverSocket = new ServerSocket(Constants.SERVER_PORT)) {
             System.out.println("[AuctionServer]> Server started on port " + Constants.SERVER_PORT);
 
@@ -31,7 +46,7 @@ public class AuctionServer {
                 System.out.println("[AuctionServer]> New connection from: " + clientSocket.getInetAddress());
 
                 // We pass accountManager and dataStore so the handler can process login/logout
-                threadPool.execute(new ClientHandler(clientSocket, accountManager, dataStore));
+                threadPool.execute(new ClientHandler(clientSocket, accountManager, auctionManager, dataStore));
             }
         } catch (IOException e) {
             System.err.println("[AuctionServer]> Server error: " + e.getMessage());
