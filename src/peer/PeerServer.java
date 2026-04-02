@@ -61,7 +61,7 @@ public class PeerServer extends Thread {
         }
     }
 
-    /**
+    /*
      * Inner class to handle incoming connections from the AuctionServer or other
      * Peers.
      */
