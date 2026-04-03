@@ -8,7 +8,6 @@ import java.net.UnknownHostException;
 
 
 public class PeerApp {
-    private static boolean firstRun=true;
     private static String  tokenID = null;
 //    private static String  myIpAddr = null;
 //    private static int     myPort = 0;
@@ -22,26 +21,31 @@ public class PeerApp {
     private static AuctionClient myAuctionClient = null;
     
     public static void main(String[] args) {
-
+        //initialize components
         myPeerServer = new PeerServer();
         myPeerServer.start();
 
         myAuctionClient = new AuctionClient();
         myAuctionClient.connect();
 
-/*
+        //initialize random username and password
+        username = generateRandom("user");
+        password = generateRandom("pass");
+
+        /*
         while (myPeerServer.getListeningPort() == 0) {} // busy wait until port is assigned
 
         myPort = myPeerServer.getListeningPort();
         myIpAddr = getMyIpAddress();
-*/
+        */
 
 
-
-        //Here it must check more parameters or UI
-        if (firstRun){
-            while (!register(username,password)){}
+        while (!register(username,password)){
+            //if someone already uses them, generate new credentials
+            username = generateRandom("user");
+            password = generateRandom("pass");
         }
+
 
         tokenID = login(username,password);
         myAuctionClient.setTokenID(tokenID);
@@ -96,10 +100,18 @@ public class PeerApp {
     private static void   logout(String token_id){
         Message reqLogOut = new Message(MessageType.LOGOUT);
         reqLogOut.put("token",tokenID);
+
         myAuctionClient.sendMessage(reqLogOut);
+        Message resp = myAuctionClient.receiveMessage();
+        System.out.println("[PeerApp]> Sent Logout to Server: "+resp.getString("message"));
+        System.out.println("[PeerApp]> Logging Out");
 
         myPeerServer.shutdown();
         myAuctionClient.disconnect();
+    }
+
+    private static String generateRandom(String prefix) {
+        return prefix + "_" + java.util.UUID.randomUUID().toString().substring(0, 8);
     }
 
 /*
