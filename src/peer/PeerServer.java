@@ -11,7 +11,6 @@ import java.util.concurrent.Executors;
 
 /*
  * It extends Thread so that it can run continuously in the background.
- * Needs to read the keyboard input and needs to wait silently for message from the network
  */
 public class PeerServer extends Thread {
 
