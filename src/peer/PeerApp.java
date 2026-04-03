@@ -1,47 +1,116 @@
 package peer;
 
 import models.Message;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import models.Message.MessageType;
+
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 
 
 public class PeerApp {
-    private boolean firstRun=true;
-    private String  tokenID = null;
-    private String  myIpAddr = null;
-    private int     myPort = null;
+    private static boolean firstRun=true;
+    private static String  tokenID = null;
+//    private static String  myIpAddr = null;
+//    private static int     myPort = 0;
+
     //UI to Initialize them
-    private String username = "";
-    private String password = "";
+    private static String username = "";
+    private static String password = "";
 
 
-    private PeerServer myPeerServer = null;
-    private AuctionClient myAuctionClient = null;
+    private static PeerServer myPeerServer = null;
+    private static AuctionClient myAuctionClient = null;
     
     public static void main(String[] args) {
 
-        this.myPeerServer = new PeerServer();
-        this.myPeerServer.start();
-        this.myAuctionClient = new AuctionClient();
-        this.myAuctionClient.start();
-        this.myAuctionClient.connect():
-        // Here it must check more parameters
-        if (firstRun){
-            register(username,password)
-        }
-        tokenID = login()
+        myPeerServer = new PeerServer();
+        myPeerServer.start();
 
-        logout();
+        myAuctionClient = new AuctionClient();
+        myAuctionClient.connect();
+
+/*
+        while (myPeerServer.getListeningPort() == 0) {} // busy wait until port is assigned
+
+        myPort = myPeerServer.getListeningPort();
+        myIpAddr = getMyIpAddress();
+*/
+
+
+
+        //Here it must check more parameters or UI
+        if (firstRun){
+            while (!register(username,password)){}
+        }
+
+        tokenID = login(username,password);
+        myAuctionClient.setTokenID(tokenID);
+
+        //here happens the actual running of the client in a loop
+
+        logout(tokenID);
     }
     
-    private static void   register(String username, String password){}
-    //must send the server its own ip and port
-    private static String login(String username, String password, String myIpAddr, int myPort){}
-    private static void   logout(String token_id){}
+    private static Boolean register(String username, String password){
+        Message reqLogIn = new Message(MessageType.REGISTER);
+        reqLogIn.put("username",username);
+        reqLogIn.put("password",password);
+
+        myAuctionClient.sendMessage(reqLogIn);
+        Message response = myAuctionClient.receiveMessage();
+
+        if (response == null) {
+            System.err.println("[PeerApp]> No response from server.");
+            return false;
+        }
+
+        if (response.getType() != MessageType.SUCCESS) {
+            System.err.println("[PeerApp]> Register failed: " + response.getString("message"));
+            return false;
+        }
+        System.out.println("[PeerApp]> Register was successful");
+        return true;
+    }
+
+    private static String login(String username, String password){
+        Message reqLogIn = new Message(MessageType.LOGIN);
+        reqLogIn.put("username",username);
+        reqLogIn.put("password",password);
+
+        myAuctionClient.sendMessage(reqLogIn);
+        Message response = myAuctionClient.receiveMessage();
+
+        if (response == null) {
+            System.err.println("[PeerApp]> No response from server.");
+            return null;
+        }
+
+        if (response.getType() != MessageType.SUCCESS) {
+            System.err.println("[PeerApp]> Login failed: " + response.getString("message"));
+            return null;
+        }
+
+        return response.getString("token");
+    }
+
+    private static void   logout(String token_id){
+        Message reqLogOut = new Message(MessageType.LOGOUT);
+        reqLogOut.put("token",tokenID);
+        myAuctionClient.sendMessage(reqLogOut);
+
+        myPeerServer.shutdown();
+        myAuctionClient.disconnect();
+    }
+
+/*
+    private static String getMyIpAddress() {
+        try {
+            return InetAddress.getLocalHost().getHostAddress();
+        } catch (UnknownHostException e) {
+            System.err.println("[PeerApp]> Could not determine IP address: " + e.getMessage());
+            return "127.0.0.1";
+        }
+    }
+*/
 
 }
