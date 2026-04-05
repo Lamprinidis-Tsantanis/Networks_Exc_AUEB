@@ -21,6 +21,8 @@ public class AuctionClient {
     private ObjectOutputStream writer;
     private ObjectInputStream reader;
     private String tokenID = null;
+    private boolean isPolling = false;
+    private Thread pollingThread;
 
     /**
      * Connects to the AuctionServer using the IP and Port defined in
@@ -91,6 +93,17 @@ public class AuctionClient {
     }
 
     /**
+     * Atomically sends a request and waits for the specific reply.
+     * Synchronized ensures that if the Poller is using the socket,
+     * the User UI will wait until the Poller's full transaction is
+     * finished.
+     */
+    public synchronized Message sendAndReceive(Message request) {
+        sendMessage(request);
+        return receiveMessage();
+    }
+
+    /**
      * Sets the session token. To be called by the CLI/UI after a successful LOGIN
      * request.
      *
@@ -98,6 +111,54 @@ public class AuctionClient {
      */
     public void setTokenID(String tokenID) {
         this.tokenID = tokenID;
+    }
+
+    /**
+     * Starts a background polling thread that automatically requests the
+     * currently active auction from the central server every 60 seconds.
+     * <p>
+     * When an active auction is received, this thread will print the item's
+     * description and object ID to the console. It then triggers the
+     * {@link #evaluateInterest(String)} method to simulate the user's
+     * interest in the item.
+     * <p>
+     * This loop runs asynchronously on its own thread so it does not block
+     * the main user interface. It will run indefinitely until
+     * {@link #stopPolling()} is explicitly called (e.g. during logout).
+     */
+    public void startPolling() {
+        isPolling = true;
+        pollingThread = new Thread(() -> {
+            System.out.println("[Poller]> Started background polling...");
+
+            while (isPolling) {
+                try {
+                    Message req = new Message(Message.MessageType.GET_CURRENT_AUCTION);
+                    Message response = sendAndReceive(req);
+
+                    if (response != null && response.getType() == Message.MessageType.SUCCESS) {
+                        String objId = response.getString("object_id");
+                        String desc = response.getString("description");
+                        System.out.println("\n[Poller]> Currently Auctioning: " + desc + " (ID: " + objId + ")");
+
+                        evaluateInterest(objId);
+                    }
+
+                    Thread.sleep(60000);
+
+                } catch (InterruptedException e) {
+                    System.out.println("[Poller]> Polling interrupted/stopped.");
+                }
+            }
+        });
+        pollingThread.start();
+    }
+
+    public void stopPolling() {
+        isPolling = false;
+        if (pollingThread != null) {
+            pollingThread.interrupt();
+        }
     }
 
     /**

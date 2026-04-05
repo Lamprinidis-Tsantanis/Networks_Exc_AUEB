@@ -6,59 +6,66 @@ import models.Message.MessageType;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
-
 public class PeerApp {
-    private static String  tokenID = null;
-//    private static String  myIpAddr = null;
-//    private static int     myPort = 0;
+    private static String tokenID = null;
+    // private static String myIpAddr = null;
+    // private static int myPort = 0;
 
-    //UI to Initialize them
+    // UI to Initialize them
     private static String username = "";
     private static String password = "";
 
-
     private static PeerServer myPeerServer = null;
     private static AuctionClient myAuctionClient = null;
-    
+
     public static void main(String[] args) {
-        //initialize components
+        // initialize components
         myPeerServer = new PeerServer();
         myPeerServer.start();
 
         myAuctionClient = new AuctionClient();
         myAuctionClient.connect();
 
-        //initialize random username and password
+        // initialize random username and password
         username = generateRandom("user");
         password = generateRandom("pass");
 
         /*
-        while (myPeerServer.getListeningPort() == 0) {} // busy wait until port is assigned
+         * while (myPeerServer.getListeningPort() == 0) {} // busy wait until port is
+         * assigned
+         * 
+         * myPort = myPeerServer.getListeningPort();
+         * myIpAddr = getMyIpAddress();
+         */
 
-        myPort = myPeerServer.getListeningPort();
-        myIpAddr = getMyIpAddress();
-        */
-
-
-        while (!register(username,password)){
-            //if someone already uses them, generate new credentials
+        while (!register(username, password)) {
+            // if someone already uses them, generate new credentials
             username = generateRandom("user");
             password = generateRandom("pass");
         }
 
-
-        tokenID = login(username,password);
+        tokenID = login(username, password);
         myAuctionClient.setTokenID(tokenID);
 
-        //here happens the actual running of the client in a loop
+        myAuctionClient.startPolling();
 
+        // TODO here happens the actual running of the client in a loop
+        // added a sleep for now
+        try {
+            System.out.println("[PeerApp]> App is running. Waiting for 2 minutes to test poller...");
+            Thread.sleep(125000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        myAuctionClient.stopPolling();
         logout(tokenID);
     }
-    
-    private static Boolean register(String username, String password){
+
+    private static Boolean register(String username, String password) {
         Message reqLogIn = new Message(MessageType.REGISTER);
-        reqLogIn.put("username",username);
-        reqLogIn.put("password",password);
+        reqLogIn.put("username", username);
+        reqLogIn.put("password", password);
 
         myAuctionClient.sendMessage(reqLogIn);
         Message response = myAuctionClient.receiveMessage();
@@ -76,10 +83,10 @@ public class PeerApp {
         return true;
     }
 
-    private static String login(String username, String password){
+    private static String login(String username, String password) {
         Message reqLogIn = new Message(MessageType.LOGIN);
-        reqLogIn.put("username",username);
-        reqLogIn.put("password",password);
+        reqLogIn.put("username", username);
+        reqLogIn.put("password", password);
 
         myAuctionClient.sendMessage(reqLogIn);
         Message response = myAuctionClient.receiveMessage();
@@ -97,13 +104,13 @@ public class PeerApp {
         return response.getString("token");
     }
 
-    private static void   logout(String token_id){
+    private static void logout(String token_id) {
         Message reqLogOut = new Message(MessageType.LOGOUT);
-        reqLogOut.put("token",tokenID);
+        reqLogOut.put("token", tokenID);
 
         myAuctionClient.sendMessage(reqLogOut);
         Message resp = myAuctionClient.receiveMessage();
-        System.out.println("[PeerApp]> Sent Logout to Server: "+resp.getString("message"));
+        System.out.println("[PeerApp]> Sent Logout to Server: " + resp.getString("message"));
         System.out.println("[PeerApp]> Logging Out");
 
         myPeerServer.shutdown();
@@ -114,15 +121,16 @@ public class PeerApp {
         return prefix + "_" + java.util.UUID.randomUUID().toString().substring(0, 8);
     }
 
-/*
-    private static String getMyIpAddress() {
-        try {
-            return InetAddress.getLocalHost().getHostAddress();
-        } catch (UnknownHostException e) {
-            System.err.println("[PeerApp]> Could not determine IP address: " + e.getMessage());
-            return "127.0.0.1";
-        }
-    }
-*/
+    /*
+     * private static String getMyIpAddress() {
+     * try {
+     * return InetAddress.getLocalHost().getHostAddress();
+     * } catch (UnknownHostException e) {
+     * System.err.println("[PeerApp]> Could not determine IP address: " +
+     * e.getMessage());
+     * return "127.0.0.1";
+     * }
+     * }
+     */
 
 }
