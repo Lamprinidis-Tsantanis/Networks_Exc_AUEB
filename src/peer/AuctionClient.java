@@ -141,7 +141,7 @@ public class AuctionClient {
                         String desc = response.getString("description");
                         System.out.println("\n[Poller]> Currently Auctioning: " + desc + " (ID: " + objId + ")");
 
-                        evaluateInterest(objId);
+                        //evaluateInterest(objId);
                     }
 
                     Thread.sleep(60000);

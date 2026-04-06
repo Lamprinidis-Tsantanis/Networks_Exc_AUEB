@@ -17,6 +17,7 @@ public class PeerApp {
 
     private static PeerServer myPeerServer = null;
     private static AuctionClient myAuctionClient = null;
+    private static ItemGenerator generator = null;
 
     public static void main(String[] args) {
         // initialize components
@@ -46,6 +47,8 @@ public class PeerApp {
 
         tokenID = login(username, password);
         myAuctionClient.setTokenID(tokenID);
+        startGenerator();
+
 
         myAuctionClient.startPolling();
 
@@ -57,7 +60,7 @@ public class PeerApp {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-
+        stopGenerator();
         myAuctionClient.stopPolling();
         logout(tokenID);
     }
@@ -115,6 +118,17 @@ public class PeerApp {
 
         myPeerServer.shutdown();
         myAuctionClient.disconnect();
+    }
+
+    /** Starts ItemGenerator */
+    private static void startGenerator(){
+        String sharedDirPath = "shared_directory_" + username; //unique shared directory name so multiple clients can exist in the same system
+        generator = new ItemGenerator(myAuctionClient, username, sharedDirPath);
+        generator.start();
+    }
+    /** Starts ItemGenerator */
+    private static void stopGenerator(){
+        generator.stopGenerator();
     }
 
     private static String generateRandom(String prefix) {
