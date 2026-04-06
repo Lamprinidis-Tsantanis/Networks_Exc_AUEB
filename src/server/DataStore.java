@@ -10,21 +10,21 @@ import java.util.concurrent.LinkedBlockingDeque;
  * (sections, tokenId) and an Item list (auctionList)
  */
 public class DataStore {
+    /** username is Key */
     private static final ConcurrentHashMap<String, UserRecord> registeredUsers = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>();
+
     /** TokenId is Key */
+    private static final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, ClientHandler> activeClientHandlers = new ConcurrentHashMap<>();
-    private final LinkedBlockingDeque<Item> auctionQueue = new LinkedBlockingDeque<>();
-    // ItemId SellerId Map
-    private final ConcurrentHashMap<String, String> itemSellerMap = new ConcurrentHashMap<>();
+
+    private final LinkedBlockingDeque<AuctionEntry> auctionQueue = new LinkedBlockingDeque<>();
 
     // ---------------------------------------------------------
     // SINGLETON
     // ---------------------------------------------------------
     private static DataStore singletonInstance = null;
 
-    private DataStore() {
-    }
+    private DataStore() {}
 
     public static DataStore getInstance() {
         if (singletonInstance == null) {
@@ -66,6 +66,15 @@ public class DataStore {
             this.username = username;
             this.ipAddress = ipAddress;
             this.port = port;
+        }
+    }
+
+    public static class AuctionEntry {
+        public Item auctionItem;
+        public String sellerTokenId;
+        public AuctionEntry(Item auctionItem, String sellerTokenId) {
+            this.auctionItem = auctionItem;
+            this.sellerTokenId = sellerTokenId;
         }
     }
 
@@ -180,8 +189,7 @@ public class DataStore {
 
     /** Adds an item to the end off the auction queue */
     public void enqueueItem(Item item, String sellerTokenId) {
-        if (auctionQueue.offer(item)) {
-            itemSellerMap.put(item.getObjectId(), sellerTokenId);
+        if (auctionQueue.offer(new AuctionEntry(item, sellerTokenId))) {
             System.out.println(
                     "[DataStore] Item enqueued: " + item.getObjectId() + " | Queue size: " + auctionQueue.size());
             return;
@@ -190,36 +198,13 @@ public class DataStore {
     }
 
     /** Removes and returns the first item of the queue */
-    public Item dequeueItem() throws InterruptedException {
+    public AuctionEntry dequeueItem() throws InterruptedException {
         return auctionQueue.take();
     }
 
-    public String getSellerToken(String itemId) {
-        return itemSellerMap.getOrDefault(itemId, null);
-    }
-
-    public String getAndRemoveSellerToken(String itemId) {
-        return itemSellerMap.remove(itemId);
-    }
-
-    public void removeItemFromAuction(String objectId) {
-        itemSellerMap.remove(objectId);
-        System.out.println("[DataStore]> Item removed from auction: " + objectId);
-    }
-
-    /** Removes and returns the first item of the queue */
+    /** returns the size of the queue */
     public int getQueueSize() {
         return auctionQueue.size();
-    }
-
-    /**
-     * Retrieves the seller's tokenId based on the item's objectId.
-     * 
-     * @param objectId The ID of the item.
-     * @return The tokenId of the seller, or null if not found.
-     */
-    public String getItemSeller(String objectId) {
-        return itemSellerMap.get(objectId);
     }
 
     /** Returns the map of all active sessions */

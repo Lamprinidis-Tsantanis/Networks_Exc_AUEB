@@ -25,7 +25,6 @@ public class AuctionManager {
      *         <br>
      *         <br>
      *         {@code putting a lot of items may overload the datastore and provide no Error, only record in terminal by enqueue }
-     *
      */
     public boolean getAuctionRequest(String tokenId, List<Item> itemList) {
         String error = "[AuctionManager]> ERROR while trying to add items to AuctionList: ";
@@ -51,8 +50,9 @@ public class AuctionManager {
      */
     public void startAuction() throws InterruptedException {
         try {
-            Item nextItem = dataStore.dequeueItem();
-            String sellerToken = dataStore.getAndRemoveSellerToken(nextItem.getObjectId());
+            DataStore.AuctionEntry nextAuctionEntry = dataStore.dequeueItem();
+            Item nextItem = nextAuctionEntry.auctionItem;
+            String sellerToken = nextAuctionEntry.sellerTokenId;
 
             System.out.println("[AuctionManager]> Starting auction for Item: " + nextItem.getObjectId());
 
@@ -91,7 +91,7 @@ public class AuctionManager {
      */
     public String[] sendCurrentAuction() {
         if (currentAuctionThread != null) {
-            Item activeItem = currentAuctionThread.getAuctioningItem();
+             Item activeItem = currentAuctionThread.getAuctioningItem();
             if (activeItem != null) {
                 return new String[] { activeItem.getObjectId(), activeItem.getDescription() };
             }
@@ -117,9 +117,9 @@ public class AuctionManager {
     public Object[] sendAuctionDetails() {
         if (currentAuctionThread != null && currentAuctionThread.isActive()) {
             Item activeItem = currentAuctionThread.getAuctioningItem();
+            String sellerToken = currentAuctionThread.getSellerToken();
 
             if (activeItem != null) {
-                String sellerToken = dataStore.getItemSeller(activeItem.getObjectId());
                 double highestBid = currentAuctionThread.getHighestBid();
                 long remainingTime = currentAuctionThread.getAuctionTimeLeft();
 
