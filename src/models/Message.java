@@ -11,7 +11,8 @@ public class Message implements Serializable {
     public enum MessageType {
         REGISTER, LOGIN, LOGOUT,
         REQUEST_AUCTION, GET_CURRENT_AUCTION, GET_AUCTION_DETAILS,
-        PLACE_BID, AUCTION_RESULT, TRANSACTION, CHECK_ACTIVE,
+        PLACE_BID, AUCTION_RESULT, CHECK_ACTIVE,
+        TRANSACTION,CONFIRM_OWNERSHIP,
         SUCCESS, ERROR // Βοηθητικά για απαντήσεις του Server
     }
 

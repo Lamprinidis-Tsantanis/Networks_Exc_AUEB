@@ -102,6 +102,30 @@ public class PeerServer extends Thread {
                         String status = request.getString("status");
                         String msg = request.getString("message");
                         System.out.println("\n[URGENT NOTIFICATION]> " + status + ": " + msg);
+
+                        String objectId   = request.getString("object_id");
+                        String objectDesc = request.getString("object_description");
+                        double finalPrice = Double.parseDouble(request.getString("final_price"));
+                        int    timestamp = Integer.parseInt(request.getString("timestamp"));
+
+                        switch (status) {
+                            case "WON":
+                                objectId   = request.getString("object_id");
+                                objectDesc = request.getString("object_description");
+                                finalPrice = Double.parseDouble(request.getString("final_price"));
+                                String sellerTransIp = request.getString("seller_trans_ip");
+                                String sellerTransPort = request.getString("seller_trans_port");
+
+                            case "SOLD":
+                                objectId   = request.getString("object_id");
+                                objectDesc = request.getString("object_description");
+                                finalPrice = Double.parseDouble(request.getString("final_price"));
+                                String buyerUsername = request.getString("buyer_username");
+                                int    buyerToken   = Integer.parseInt(request.getString("buyer_token"));
+
+
+
+                        }
                         break;
 
                     default:

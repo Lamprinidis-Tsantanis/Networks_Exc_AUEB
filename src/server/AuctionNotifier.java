@@ -22,6 +22,8 @@ public class AuctionNotifier {
         auctionWonMsg.put("object_description", item.getDescription());
         auctionWonMsg.put("final_price", finalPrice);
         auctionWonMsg.put("seller_username", sellerUsername);
+        //auctionWonMsg.put("seller_trans_ip", sellerTransIp);
+        //auctionWonMsg.put("seller_trans_port", sellerTransPort);
         auctionWonMsg.put("timestamp", System.currentTimeMillis());
 
         broadcastMessageToClient(winnerToken, auctionWonMsg);

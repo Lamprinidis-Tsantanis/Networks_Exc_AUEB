@@ -41,9 +41,9 @@ public class ItemGenerator extends Thread {
                 Thread.sleep(sleepTimeMs);
 
                 //create item
-                String objectId = "Obj_" +  String.format("%02d", itemCount++) + username ;
-                String description ="Item created by " + username + "_Obj_" + String.format("%02d ", itemCount++)+ " this is a short description";
-                double startBid = (double)(10+(Math.random()*90.0)); //10-100 currency
+                String objectId = "Obj_" +  String.format("%02d_", itemCount++) + username ;
+                String description ="Item created by " + username + ", it is named" + objectId + " this is a short description";
+                double startBid = Math.round((10 + (Math.random() * 90.0)) * 100.0) / 100.0; //10-100 currency, 2 decimal places
                 int duration = 30 + (int)(Math.random() * 60); //30-90 sec
                 Item item = new Item(objectId,description, startBid, duration);
 
