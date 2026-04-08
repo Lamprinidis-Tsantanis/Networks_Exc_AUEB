@@ -141,7 +141,7 @@ public class AuctionClient {
                         String desc = response.getString("description");
                         System.out.println("\n[Poller]> Currently Auctioning: " + desc + " (ID: " + objId + ")");
 
-                        //evaluateInterest(objId);
+                        evaluateInterest(objId);
                     }
 
                     Thread.sleep(60000);
@@ -158,6 +158,52 @@ public class AuctionClient {
         isPolling = false;
         if (pollingThread != null) {
             pollingThread.interrupt();
+        }
+    }
+
+    /**
+     * Simulates bidder interest in a currently active auction using probability.
+     * <p>
+     * This method evaluates a 60% random chance to determine if the peer is
+     * interested in the specified item. If the peer is interested, it constructs
+     * and sends a {@code GET_AUCTION_DETAILS} request to the central server to
+     * retrieve the current state of the auction (seller token, highest bid, and
+     * remaining time) and displays it to the user.
+     * <p>
+     * This method acts as the entry point for automated bidding and sets up the
+     * state required to place a formal bid.
+     *
+     * @param objId The ID of the item currently up for auction.
+     */
+    public void evaluateInterest(String objId) {
+        double randInterest = Math.random();
+
+        if (randInterest < 0.6) {
+            System.out
+                    .println("[Poller]> 60% Check Passed! I am interested in item " + objId + ". Fetching details...");
+
+            Message reqDetails = new Message(Message.MessageType.GET_AUCTION_DETAILS);
+            reqDetails.put("object_id", objId);
+            Message response = sendAndReceive(reqDetails);
+
+            if (response != null && response.getType() == Message.MessageType.SUCCESS) {
+                String sellerToken = response.getString("seller_token");
+                Object highestBid = response.get("highest_bid");
+                Object timeRemaining = response.get("remaining_time");
+
+                System.out.println("   --- AUCTION DETAILS ---");
+                System.out.println("   -> Seller Token: " + sellerToken);
+                System.out.println("   -> Highest Bid:  " + highestBid);
+                System.out.println("   -> Time Left:    " + timeRemaining + " seconds");
+                System.out.println("   -----------------------");
+
+                // NOTE: Ticket T-23 (Placing a bid) goes here
+
+            } else {
+                System.out.println("[Poller]> Failed to get details. The auction might have just ended.");
+            }
+        } else {
+            System.out.println("[Poller]> Not interested in item " + objId + " this time.");
         }
     }
 
