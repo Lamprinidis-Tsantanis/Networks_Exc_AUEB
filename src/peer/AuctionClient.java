@@ -2,6 +2,8 @@ package peer;
 
 import models.Message;
 import utils.Constants;
+
+import java.awt.TrayIcon.MessageType;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -141,7 +143,7 @@ public class AuctionClient {
                         String desc = response.getString("description");
                         System.out.println("\n[Poller]> Currently Auctioning: " + desc + " (ID: " + objId + ")");
 
-                        //evaluateInterest(objId);
+                        evaluateInterest(objId);
                     }
 
                     Thread.sleep(60000);
@@ -158,6 +160,74 @@ public class AuctionClient {
         isPolling = false;
         if (pollingThread != null) {
             pollingThread.interrupt();
+        }
+    }
+
+    /**
+     * Simulates bidder interest in a currently active auction using probability.
+     * <p>
+     * This method evaluates a 60% random chance to determine if the peer is
+     * interested in the specified item. If the peer is interested, it constructs
+     * and sends a {@code GET_AUCTION_DETAILS} request to the central server to
+     * retrieve the current state of the auction (seller token, highest bid, and
+     * remaining time) and displays it to the user.
+     * <p>
+     * This method acts as the entry point for automated bidding and sets up the
+     * state required to place a formal bid.
+     *
+     * @param objId The ID of the item currently up for auction.
+     */
+    public void evaluateInterest(String objId) {
+        double randInterest = Math.random();
+
+        if (randInterest < 0.6) {
+            System.out
+                    .println("[Poller]> 60% Check Passed! I am interested in item " + objId + ". Fetching details...");
+
+            Message reqDetails = new Message(Message.MessageType.GET_AUCTION_DETAILS);
+            reqDetails.put("object_id", objId);
+            Message response = sendAndReceive(reqDetails);
+
+            if (response != null && response.getType() == Message.MessageType.SUCCESS) {
+                // SUCCESS part
+                String sellerToken = response.getString("seller_token");
+                Object highestBid = response.get("highest_bid");
+                Object timeRemaining = response.get("remaining_time");
+
+                System.out.println("   --- AUCTION DETAILS ---");
+                System.out.println("   -> Seller Token: " + sellerToken);
+                System.out.println("   -> Highest Bid:  " + highestBid);
+                System.out.println("   -> Time Left:    " + timeRemaining + " seconds");
+                System.out.println("   -----------------------");
+
+                // PLACE BID part
+                try {
+                    double currentHighest = ((Number) highestBid).doubleValue();
+                    double newBid = currentHighest * (1 + (Math.random() / 10));
+                    newBid = Math.round(newBid * 100.0) / 100.0;
+
+                    Message placeBid = new Message(Message.MessageType.PLACE_BID);
+                    placeBid.put("object_id", objId);
+                    placeBid.put("bid_amount", newBid); // <--- Added the missing bid amount!
+
+                    System.out.println("[Poller]> Attempting to place bid of " + newBid + "...");
+
+                    Message bidResponse = sendAndReceive(placeBid);
+
+                    if (bidResponse != null && bidResponse.getType() == Message.MessageType.SUCCESS) {
+                        System.out.println("[Poller]> Bid placed successfully! New highest bid is: " + newBid);
+                    } else {
+                        String errorMsg = (bidResponse != null) ? bidResponse.getString("message") : "Connection lost";
+                        System.out.println("[Poller]> Failed to place bid for " + objId + ". Reason: " + errorMsg);
+                    }
+                } catch (Exception e) {
+                    System.err.println("[Poller]> Error calculating or placing bid: " + e.getMessage());
+                }
+            } else {
+                System.out.println("[Poller]> Failed to get details. The auction might have just ended.");
+            }
+        } else {
+            System.out.println("[Poller]> Not interested in item " + objId + " this time.");
         }
     }
 
