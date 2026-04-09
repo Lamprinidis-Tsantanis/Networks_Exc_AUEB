@@ -202,30 +202,21 @@ public class AuctionClient {
 
                 // PLACE BID part
                 try {
-                    // 1. Safely cast the Object to a double
                     double currentHighest = ((Number) highestBid).doubleValue();
-
-                    // 2. Compute NewBid = HighestBid * (1 + Math.random() / 10)
                     double newBid = currentHighest * (1 + (Math.random() / 10));
-
-                    // Optional: Round to 2 decimal places so it looks like real currency
                     newBid = Math.round(newBid * 100.0) / 100.0;
 
-                    // 3. Create the message
                     Message placeBid = new Message(Message.MessageType.PLACE_BID);
                     placeBid.put("object_id", objId);
                     placeBid.put("bid_amount", newBid); // <--- Added the missing bid amount!
 
                     System.out.println("[Poller]> Attempting to place bid of " + newBid + "...");
 
-                    // 4. Send and verify
                     Message bidResponse = sendAndReceive(placeBid);
 
-                    // Fixed: Now checking 'bidResponse' instead of 'response'
                     if (bidResponse != null && bidResponse.getType() == Message.MessageType.SUCCESS) {
                         System.out.println("[Poller]> Bid placed successfully! New highest bid is: " + newBid);
                     } else {
-                        // Extract the server's error message so we know why it failed
                         String errorMsg = (bidResponse != null) ? bidResponse.getString("message") : "Connection lost";
                         System.out.println("[Poller]> Failed to place bid for " + objId + ". Reason: " + errorMsg);
                     }

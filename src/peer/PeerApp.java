@@ -2,6 +2,7 @@ package peer;
 
 import models.Message;
 import models.Message.MessageType;
+import peer.PeerServer;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -48,7 +49,6 @@ public class PeerApp {
         tokenID = login(username, password);
         myAuctionClient.setTokenID(tokenID);
         startGenerator();
-
 
         myAuctionClient.startPolling();
 
@@ -121,13 +121,17 @@ public class PeerApp {
     }
 
     /** Starts ItemGenerator */
-    private static void startGenerator(){
-        String sharedDirPath = "shared_directory_" + username; //unique shared directory name so multiple clients can exist in the same system
+    private static void startGenerator() {
+        String sharedDirPath = "shared_directory_" + username; // unique shared directory name so multiple clients can
+                                                               // exist in the same system
+        myPeerServer.setDirectory(sharedDirPath);
+
         generator = new ItemGenerator(myAuctionClient, username, sharedDirPath);
         generator.start();
     }
+
     /** Starts ItemGenerator */
-    private static void stopGenerator(){
+    private static void stopGenerator() {
         generator.stopGenerator();
     }
 

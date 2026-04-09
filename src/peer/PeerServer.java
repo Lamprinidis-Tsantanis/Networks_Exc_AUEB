@@ -1,23 +1,26 @@
 package peer;
 
 import models.Message;
+import models.Message.MessageType;
+import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.BufferedReader;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Files;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/*
- * It extends Thread so that it can run continuously in the background.
- */
 public class PeerServer extends Thread {
 
     private final ExecutorService threadPool;
     private int listeningPort;
     private boolean running = true;
     private ServerSocket serverSocket;
+    private String directoryPath;
 
     public PeerServer() {
         this.threadPool = Executors.newCachedThreadPool();
@@ -25,6 +28,10 @@ public class PeerServer extends Thread {
 
     public int getListeningPort() {
         return listeningPort;
+    }
+
+    public void setDirectory(String dir) {
+        this.directoryPath = dir;
     }
 
     @Override
@@ -92,10 +99,31 @@ public class PeerServer extends Thread {
                         break;
 
                     case TRANSACTION:
-                        // T-25: A winning buyer has connected to us to claim their file.
                         System.out.println("[PeerServer]> Received TRANSACTION request from a buyer.");
-                        // TODO: Implement Transaction logic (Read object_id, send file, delete local
-                        // copy)
+                        String objId = request.getString("object_id");
+
+                        Path filePath = Paths.get(directoryPath, objId + ".txt");
+
+                        try {
+                            String fileContent = new String(Files.readAllBytes(filePath));
+
+                            Message successMsg = new Message(Message.MessageType.SUCCESS);
+                            successMsg.put("file_data", fileContent);
+
+                            out.writeObject(successMsg);
+                            out.flush();
+                            System.out.println("[PeerServer]> Sent file contents for " + objId + " to buyer.");
+
+                            Files.delete(filePath);
+                            System.out.println("[PeerServer]> Deleted local file: " + filePath.getFileName());
+
+                        } catch (IOException e) {
+                            Message errorMsg = new Message(Message.MessageType.ERROR);
+                            errorMsg.put("message", "Seller could not read or find the file.");
+                            out.writeObject(errorMsg);
+                            out.flush();
+                            System.err.println("[PeerServer]> Failed transaction for " + objId + ": " + e.getMessage());
+                        }
                         break;
 
                     case AUCTION_RESULT:
