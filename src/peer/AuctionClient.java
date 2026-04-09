@@ -2,6 +2,8 @@ package peer;
 
 import models.Message;
 import utils.Constants;
+
+import java.awt.TrayIcon.MessageType;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -187,6 +189,7 @@ public class AuctionClient {
             Message response = sendAndReceive(reqDetails);
 
             if (response != null && response.getType() == Message.MessageType.SUCCESS) {
+                // SUCCESS part
                 String sellerToken = response.getString("seller_token");
                 Object highestBid = response.get("highest_bid");
                 Object timeRemaining = response.get("remaining_time");
@@ -197,8 +200,38 @@ public class AuctionClient {
                 System.out.println("   -> Time Left:    " + timeRemaining + " seconds");
                 System.out.println("   -----------------------");
 
-                // NOTE: Ticket T-23 (Placing a bid) goes here
+                // PLACE BID part
+                try {
+                    // 1. Safely cast the Object to a double
+                    double currentHighest = ((Number) highestBid).doubleValue();
 
+                    // 2. Compute NewBid = HighestBid * (1 + Math.random() / 10)
+                    double newBid = currentHighest * (1 + (Math.random() / 10));
+
+                    // Optional: Round to 2 decimal places so it looks like real currency
+                    newBid = Math.round(newBid * 100.0) / 100.0;
+
+                    // 3. Create the message
+                    Message placeBid = new Message(Message.MessageType.PLACE_BID);
+                    placeBid.put("object_id", objId);
+                    placeBid.put("bid_amount", newBid); // <--- Added the missing bid amount!
+
+                    System.out.println("[Poller]> Attempting to place bid of " + newBid + "...");
+
+                    // 4. Send and verify
+                    Message bidResponse = sendAndReceive(placeBid);
+
+                    // Fixed: Now checking 'bidResponse' instead of 'response'
+                    if (bidResponse != null && bidResponse.getType() == Message.MessageType.SUCCESS) {
+                        System.out.println("[Poller]> Bid placed successfully! New highest bid is: " + newBid);
+                    } else {
+                        // Extract the server's error message so we know why it failed
+                        String errorMsg = (bidResponse != null) ? bidResponse.getString("message") : "Connection lost";
+                        System.out.println("[Poller]> Failed to place bid for " + objId + ". Reason: " + errorMsg);
+                    }
+                } catch (Exception e) {
+                    System.err.println("[Poller]> Error calculating or placing bid: " + e.getMessage());
+                }
             } else {
                 System.out.println("[Poller]> Failed to get details. The auction might have just ended.");
             }
