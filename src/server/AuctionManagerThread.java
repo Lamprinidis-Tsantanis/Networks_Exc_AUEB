@@ -107,13 +107,17 @@ public class AuctionManagerThread extends Thread {
         try {
             System.out.println("\n[AuctionManagerThread]> === AUCTION COMPLETE ===");
 
-            String sellerUsername = dataStore.getUsernameByToken(sellerToken);
-
             if (highestBidderToken != null) {
                 // AUCTION WON
                 String winnerUsername = dataStore.getUsernameByToken(highestBidderToken);
 
-                notifier.notifyAuctionWon(highestBidderToken, auctioningItem, highestBid, sellerUsername);
+                DataStore.SessionRecord sellerSession = dataStore.getSession(sellerToken);
+                String sellerUsername = sellerSession.username;
+                String sellerp2pIp = sellerSession.ipAddress;
+                Integer sellerp2pPort = sellerSession.port;
+
+
+                notifier.notifyAuctionWon(highestBidderToken, auctioningItem, highestBid, sellerUsername,sellerp2pIp,sellerp2pPort);
                 notifier.notifySellerSold(sellerToken, auctioningItem, highestBid, winnerUsername,
                         highestBidderToken);
 

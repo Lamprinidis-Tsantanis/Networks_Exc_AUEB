@@ -26,6 +26,12 @@ public class AuctionClient {
     private boolean isPolling = false;
     private Thread pollingThread;
 
+    private final java.util.concurrent.LinkedBlockingQueue<Message> responseBuffer =
+            new java.util.concurrent.LinkedBlockingQueue<>();
+    private Thread responseReaderThread;
+
+    private final Object socketLock = new Object();
+
     /**
      * Connects to the AuctionServer using the IP and Port defined in
      * Constants.java.
@@ -36,10 +42,27 @@ public class AuctionClient {
     public boolean connect() {
         try {
             requestSocket = new Socket(Constants.SERVER_IP, Constants.SERVER_PORT);
-
             writer = new ObjectOutputStream(requestSocket.getOutputStream());
             writer.flush();
             reader = new ObjectInputStream(requestSocket.getInputStream());
+
+            // START response reader thread
+            responseReaderThread = new Thread(() -> {
+                while (true) {
+                    try {
+                        Message msg = (Message) reader.readObject();
+                        if (msg != null) {
+                            responseBuffer.offer(msg);
+                        }
+
+                    } catch (IOException | ClassNotFoundException e) {
+                        System.err.println("[AuctionClient]> Reader thread error: " + e.getMessage());
+                        break;
+                    }
+                }
+            });
+            responseReaderThread.setDaemon(true);
+            responseReaderThread.start();
 
             System.out.println("[AuctionClient]> Successfully connected to AuctionServer at "
                     + Constants.SERVER_IP + ":" + Constants.SERVER_PORT);
@@ -61,18 +84,18 @@ public class AuctionClient {
      *
      * @param msg The Message object to be sent.
      */
-    public void sendMessage(Message msg) {
-        try {
-            if (tokenID != null) {
-                msg.put("token", tokenID);
+    public synchronized void sendMessage(Message msg) {
+        synchronized (socketLock) {
+            try {
+                if (tokenID != null) {
+                    msg.put("token", tokenID);
+                }
+                writer.writeObject(msg);
+                writer.flush();
+                writer.reset();
+            } catch (IOException e) {
+                System.err.println("[AuctionClient]> Error sending message: " + e.getMessage());
             }
-
-            writer.writeObject(msg);
-            writer.flush();
-            writer.reset(); // Clear the cache so updated objects aren't sent as stale references
-
-        } catch (IOException e) {
-            System.err.println("[AuctionClient]> Error sending message: " + e.getMessage());
         }
     }
 
@@ -84,12 +107,10 @@ public class AuctionClient {
      */
     public Message receiveMessage() {
         try {
-            return (Message) reader.readObject();
-        } catch (IOException e) {
-            System.err.println("[AuctionClient]> Connection to server lost: " + e.getMessage());
-            return null;
-        } catch (ClassNotFoundException e) {
-            System.err.println("[AuctionClient]> Received unknown object format: " + e.getMessage());
+            // Use timeout to prevent hanging
+            return responseBuffer.poll(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            System.err.println("[AuctionClient]> Interrupted: " + e.getMessage());
             return null;
         }
     }
@@ -101,8 +122,29 @@ public class AuctionClient {
      * finished.
      */
     public synchronized Message sendAndReceive(Message request) {
-        sendMessage(request);
-        return receiveMessage();
+        synchronized (socketLock) {
+            try {
+                if (tokenID != null) {
+                    request.put("token", tokenID);
+                }
+                writer.writeObject(request);
+                writer.flush();
+                writer.reset();
+            } catch (IOException e) {
+                System.err.println("[AuctionClient]> Error sending message: " + e.getMessage());
+                return null;
+            }
+        }
+        try {
+            Message response = responseBuffer.poll(30, java.util.concurrent.TimeUnit.SECONDS);
+            if (response == null) {
+                System.err.println("[AuctionClient]> Timeout waiting for response");
+            }
+            return response;
+        } catch (InterruptedException e) {
+            System.err.println("[AuctionClient]> Interrupted waiting for response: " + e.getMessage());
+            return null;
+        }
     }
 
     /**

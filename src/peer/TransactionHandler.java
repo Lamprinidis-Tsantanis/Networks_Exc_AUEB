@@ -34,6 +34,8 @@ public class TransactionHandler implements Runnable {
         this.sharedDir = sharedDirectory;
         this.auctionClient   = auctionClient;
     }
+
+
     @Override
     public void run() {
         System.out.println("[TransactionHandler]> Starting transaction for item: "

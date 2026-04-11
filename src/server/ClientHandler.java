@@ -131,12 +131,14 @@ public class ClientHandler implements Runnable {
     private Message handleLogin(Message req, String clientAddress, int clientPort) {
         String username = req.getString("username");
         String password = req.getString("password");
+        String p2pIpAddress = req.getString("p2pIpAddress");
+        Integer p2pPort = (Integer) req.get("p2pPort");
 
-        if (username == null || password == null) {
-            return error("Missing username or password.");
+        if (username == null || password == null || p2pIpAddress == null || p2pPort == null) {
+            return error("Missing username, password, or peer listening info.");   // <--- UPDATED
         }
 
-        String token = accountManager.login(username, password, clientAddress, clientPort);
+        String token = accountManager.login(username, password, clientAddress, clientPort, p2pIpAddress, p2pPort);
         if (token != null) {
             dataStore.registerClientHandler(token, this);
             Message resp = success("Login successful.");

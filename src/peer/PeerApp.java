@@ -47,6 +47,9 @@ public class PeerApp {
         }
 
         tokenID = login(username, password);
+
+        System.setOut(new CustomPrintStream(System.out, username));
+
         myAuctionClient.setTokenID(tokenID);
         startGenerator();
 
@@ -88,8 +91,14 @@ public class PeerApp {
 
     private static String login(String username, String password) {
         Message reqLogIn = new Message(MessageType.LOGIN);
+
+        String myIp = getMyIpAddress();
+        int myPort = myPeerServer.getListeningPort();
+
         reqLogIn.put("username", username);
         reqLogIn.put("password", password);
+        reqLogIn.put("p2pIpAddress", myIp);
+        reqLogIn.put("p2pPort", myPort);
 
         myAuctionClient.sendMessage(reqLogIn);
         Message response = myAuctionClient.receiveMessage();
@@ -139,16 +148,15 @@ public class PeerApp {
         return prefix + "_" + java.util.UUID.randomUUID().toString().substring(0, 8);
     }
 
-    /*
-     * private static String getMyIpAddress() {
-     * try {
-     * return InetAddress.getLocalHost().getHostAddress();
-     * } catch (UnknownHostException e) {
-     * System.err.println("[PeerApp]> Could not determine IP address: " +
-     * e.getMessage());
-     * return "127.0.0.1";
-     * }
-     * }
-     */
+
+    private static String getMyIpAddress() {
+        try {
+            return InetAddress.getLocalHost().getHostAddress();
+        } catch (UnknownHostException e) {
+            System.err.println("[PeerApp]> Could not determine IP address: " +
+            e.getMessage());
+            return "127.0.0.1";
+        }
+    }
 
 }

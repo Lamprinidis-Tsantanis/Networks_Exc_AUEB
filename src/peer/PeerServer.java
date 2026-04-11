@@ -17,7 +17,7 @@ import java.util.concurrent.Executors;
 public class PeerServer extends Thread {
 
     private final ExecutorService threadPool;
-    private int listeningPort;
+    private int p2pListeningPort;
     private boolean running = true;
     private ServerSocket serverSocket;
     private String directoryPath;
@@ -27,7 +27,7 @@ public class PeerServer extends Thread {
     }
 
     public int getListeningPort() {
-        return listeningPort;
+        return p2pListeningPort;
     }
 
     public void setDirectory(String dir) {
@@ -38,8 +38,8 @@ public class PeerServer extends Thread {
     public void run() {
         try {
             serverSocket = new ServerSocket(0); // 0 gives us one random available port
-            this.listeningPort = serverSocket.getLocalPort();
-            System.out.println("[PeerServer]> Peer's listening server started on random port: " + listeningPort);
+            this.p2pListeningPort = serverSocket.getLocalPort();
+            System.out.println("[PeerServer]> Peer's listening server started on random port: " + p2pListeningPort);
 
             while (running) {
                 Socket incomingSocket = serverSocket.accept();

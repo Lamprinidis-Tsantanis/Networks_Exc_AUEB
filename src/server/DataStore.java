@@ -52,20 +52,26 @@ public class DataStore {
         public String username;
         public String ipAddress;
         public int port;
+        public String p2pIpAddress;
+        public int p2pPort;
 
         /**
          * creates sessionRecord <br>
          * the token id is not registered in here because it is the key of the hashmap
          * {@code activeSessions}
          * 
-         * @param username  username of user
-         * @param ipAddress users ipAddress
-         * @param port      port where user transmits
+         * @param username      username of user
+         * @param ipAddress     ipAddress of user
+         * @param port          port where user transmits
+         * @param p2pIpAddress  ipAddress where user waits for buyer
+         * @param p2pPort       port where user waits for buyer
          */
-        public SessionRecord(String username, String ipAddress, int port) {
+        public SessionRecord(String username, String ipAddress, int port, String p2pIpAddress, int p2pPort) {
             this.username = username;
             this.ipAddress = ipAddress;
             this.port = port;
+            this.p2pIpAddress=p2pIpAddress;
+            this.p2pPort = p2pPort;
         }
     }
 
@@ -127,9 +133,9 @@ public class DataStore {
     // SESSION METHODS
     // ----------------------------------------------------------
     /** Creates a new session, returns false if the session already exists */
-    public static boolean addSession(String tokenId, String username, String ipAddress, int port) {
+    public static boolean addSession(String tokenId, String username, String ipAddress, int port, String p2pIpAddress, int p2pPort) {
         if (!activeSessions.containsKey(tokenId)) {
-            activeSessions.put(tokenId, new SessionRecord(username, ipAddress, port));
+            activeSessions.put(tokenId, new SessionRecord(username, ipAddress, port,p2pIpAddress, p2pPort));
             System.out.println("[DataStore]> Session " + username + " has been registered successfully.");
             return true;
         }
@@ -153,6 +159,7 @@ public class DataStore {
     public SessionRecord getSession(String tokenId) {
         return activeSessions.get(tokenId);
     }
+
 
     /** Returns username based on tokenId */
     public String getUsernameByToken(String tokenId) {

@@ -13,7 +13,7 @@ public class AuctionNotifier {
         this.dataStore = dataStore;
     }
 
-    public void notifyAuctionWon(String winnerToken, Item item, double finalPrice, String sellerUsername) {
+    public void notifyAuctionWon(String winnerToken, Item item, double finalPrice, String sellerUsername, String sellerp2pIp, Integer sellerp2pPort) {
         // SEND AUCTION_WON to the highest bidder
         Message auctionWonMsg = new Message(Message.MessageType.AUCTION_RESULT);
         auctionWonMsg.put("message", "Congratulations! You won the auction!");
@@ -22,9 +22,9 @@ public class AuctionNotifier {
         auctionWonMsg.put("object_description", item.getDescription());
         auctionWonMsg.put("final_price", finalPrice);
         auctionWonMsg.put("seller_username", sellerUsername);
-        //auctionWonMsg.put("seller_trans_ip", sellerTransIp);
-        //auctionWonMsg.put("seller_trans_port", sellerTransPort);
-        auctionWonMsg.put("timestamp", System.currentTimeMillis());
+        auctionWonMsg.put("p2pIpAddress", sellerp2pIp);
+        auctionWonMsg.put("p2pPort", sellerp2pPort);
+        auctionWonMsg.put("p2pPort", System.currentTimeMillis());
 
         broadcastMessageToClient(winnerToken, auctionWonMsg);
     }
