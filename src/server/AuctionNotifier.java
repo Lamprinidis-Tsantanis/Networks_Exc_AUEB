@@ -14,7 +14,7 @@ public class AuctionNotifier {
     }
 
     public void notifyAuctionWon(String winnerToken, Item item, double finalPrice, String sellerUsername, String sellerp2pIp, Integer sellerp2pPort) {
-        // SEND AUCTION_WON to the highest bidder
+        // SEND AUCTION_RESULT type AUCTION_WON to the highest bidder
         Message auctionWonMsg = new Message(Message.MessageType.AUCTION_RESULT);
         auctionWonMsg.put("message", "Congratulations! You won the auction!");
         auctionWonMsg.put("status", "WON");
@@ -23,14 +23,14 @@ public class AuctionNotifier {
         auctionWonMsg.put("final_price", finalPrice);
         auctionWonMsg.put("seller_username", sellerUsername);
         auctionWonMsg.put("p2pIpAddress", sellerp2pIp);
-        auctionWonMsg.put("p2pPort", sellerp2pPort);
-        auctionWonMsg.put("p2pPort", System.currentTimeMillis());
+        auctionWonMsg.put("p2pPort", (int) sellerp2pPort);
+        auctionWonMsg.put("timestamp", System.currentTimeMillis());
 
         broadcastMessageToClient(winnerToken, auctionWonMsg);
     }
 
     public void notifySellerSold(String sellerToken, Item item, double finalPrice, String buyerUsername, String buyerToken) {
-        // SEND AUCTION_SOLD to seller
+        // SEND AUCTION_RESULT type AUCTION_SOLD to seller
         Message auctionSoldMsg = new Message(Message.MessageType.AUCTION_RESULT);
         auctionSoldMsg.put("message", "Your item has been sold!");
         auctionSoldMsg.put("status", "SOLD");

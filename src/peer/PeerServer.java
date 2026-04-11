@@ -33,6 +33,7 @@ public class PeerServer extends Thread {
     public void setDirectory(String dir) {
         this.directoryPath = dir;
     }
+    public String getDirectory() {return this.directoryPath;}
 
     @Override
     public void run() {
@@ -89,14 +90,6 @@ public class PeerServer extends Thread {
 
                 switch (request.getType()) {
 
-                    case CHECK_ACTIVE:
-                        /*
-                         * The central AuctionServer is pinging us to see if we are still alive.
-                         * We don't necessarily need to reply. The fact that the socket connected
-                         * and didn't throw an IOException means we are alive.
-                         */
-                        System.out.println("[PeerServer]> Received CHECK_ACTIVE ping from Server.");
-                        break;
 
                     case TRANSACTION:
                         System.out.println("[PeerServer]> Received TRANSACTION request from a buyer.");
@@ -142,7 +135,9 @@ public class PeerServer extends Thread {
                                 objectDesc = request.getString("object_description");
                                 finalPrice = Double.parseDouble(request.getString("final_price"));
                                 String sellerTransIp = request.getString("seller_trans_ip");
-                                String sellerTransPort = request.getString("seller_trans_port");
+                                int sellerTransPort = Integer.parseInt(request.getString("seller_trans_port"));
+
+                                new Thread(new TransactionHandler(sellerTransIp, sellerTransPort, objectId, finalPrice, directoryPath,PeerApp.getAuctionClient())).start();
 
                             case "SOLD":
                                 objectId   = request.getString("object_id");

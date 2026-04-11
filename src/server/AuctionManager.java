@@ -56,8 +56,6 @@ public class AuctionManager {
 
             System.out.println("[AuctionManager]> Starting auction for Item: " + nextItem.getObjectId());
 
-            // Assign it to the class-level field 'currentAuctionThread', NOT a local
-            // variable
             currentAuctionThread = new AuctionManagerThread(this, dataStore, nextItem, sellerToken);
             currentAuctionThread.startAuction();
 

@@ -18,6 +18,7 @@ public class PeerApp {
 
     private static PeerServer myPeerServer = null;
     private static AuctionClient myAuctionClient = null;
+    public static  AuctionClient getAuctionClient() {return myAuctionClient;}
     private static ItemGenerator generator = null;
 
     public static void main(String[] args) {
@@ -26,7 +27,7 @@ public class PeerApp {
         myPeerServer.start();
 
         myAuctionClient = new AuctionClient();
-        myAuctionClient.connect();
+        myAuctionClient.connect(myPeerServer.getDirectory());
 
         // initialize random username and password
         username = generateRandom("user");
@@ -55,8 +56,6 @@ public class PeerApp {
 
         myAuctionClient.startPolling();
 
-        // TODO here happens the actual running of the client in a loop
-        // added a sleep for now
         try {
             System.out.println("[PeerApp]> App is running. Waiting for 2 minutes to test poller...");
             Thread.sleep(125000);
@@ -150,13 +149,15 @@ public class PeerApp {
 
 
     private static String getMyIpAddress() {
-        try {
-            return InetAddress.getLocalHost().getHostAddress();
-        } catch (UnknownHostException e) {
-            System.err.println("[PeerApp]> Could not determine IP address: " +
-            e.getMessage());
+        //try {
             return "127.0.0.1";
-        }
+
+            //return InetAddress.getLocalHost().getHostAddress();
+//        } catch (UnknownHostException e) {
+//            System.err.println("[PeerApp]> Could not determine IP address: " +
+//            e.getMessage());
+//            return "127.0.0.1";
+//        }
     }
 
 }
