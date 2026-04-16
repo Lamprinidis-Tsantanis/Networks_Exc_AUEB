@@ -113,8 +113,8 @@ public class AuctionManagerThread extends Thread {
 
                 DataStore.SessionRecord sellerSession = dataStore.getSession(sellerToken);
                 String sellerUsername = sellerSession.username;
-                String sellerp2pIp = sellerSession.ipAddress;
-                Integer sellerp2pPort = sellerSession.port;
+                String sellerp2pIp = sellerSession.p2pIpAddress;
+                Integer sellerp2pPort = sellerSession.p2pPort;
 
 
                 notifier.notifyAuctionWon(highestBidderToken, auctioningItem, highestBid, sellerUsername,sellerp2pIp,sellerp2pPort);

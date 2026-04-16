@@ -25,6 +25,7 @@ public class AuctionClient {
     private String tokenID = null;
     private boolean isPolling = false;
     private Thread pollingThread;
+    private String directoryPath;
 
     private final java.util.concurrent.LinkedBlockingQueue<Message> responseBuffer =
             new java.util.concurrent.LinkedBlockingQueue<>();
@@ -39,7 +40,8 @@ public class AuctionClient {
      *
      * @return {@code true} if connection was successful, {@code false} otherwise.
      */
-    public boolean connect() {
+    public boolean connect(String directoryPath) {
+        this.directoryPath = directoryPath;
         try {
             requestSocket = new Socket(Constants.SERVER_IP, Constants.SERVER_PORT);
             writer = new ObjectOutputStream(requestSocket.getOutputStream());
@@ -135,12 +137,50 @@ public class AuctionClient {
                 return null;
             }
         }
+
         try {
-            Message response = responseBuffer.poll(30, java.util.concurrent.TimeUnit.SECONDS);
-            if (response == null) {
-                System.err.println("[AuctionClient]> Timeout waiting for response");
+            long deadline = System.currentTimeMillis() + 30000; // 30-second timeout
+
+            // Loop through the buffer and ignore async notifications
+            while (System.currentTimeMillis() < deadline) {
+                Message response = responseBuffer.poll(1, java.util.concurrent.TimeUnit.SECONDS);
+
+                if (response != null) {
+                    // 1. Check for Asynchronous Notifications (Like Winning)
+                    if (response.getType() == Message.MessageType.AUCTION_RESULT) {
+                        String status = response.getString("status");
+                        System.out.println("[AuctionClient]> NOTIFICATION: " + response.getString("message"));
+
+                        if ("WON".equals(status)) {
+                            String sellerIp = response.getString("p2pIpAddress");
+                            int sellerPort = Integer.parseInt(response.get("p2pPort").toString());
+                            String objId = response.getString("object_id");
+                            double price = Double.parseDouble(response.get("final_price").toString());
+
+                            System.out.println("[AuctionClient]> You WON " + objId + "! Launching Transaction...");
+
+                            // Start the P2P transfer
+                            new Thread(new TransactionHandler(
+                                    sellerIp, sellerPort, objId, price, directoryPath, this
+                            )).start();
+                        }
+
+                        // This was an async notification, so we 'continue' to keep waiting
+                        // for the actual response to the request we sent.
+                        continue;
+                    }
+
+                    // 2. Check for other server pings (e.g., heartbeat)
+                    if (response.getType() == Message.MessageType.CHECK_ACTIVE) {
+                        continue;
+                    }
+
+                    // 3. If it's not a notification, it's the SUCCESS/ERROR reply we wanted
+                    return response;
+                }
             }
-            return response;
+            System.err.println("[AuctionClient]> Timeout waiting for response");
+            return null;
         } catch (InterruptedException e) {
             System.err.println("[AuctionClient]> Interrupted waiting for response: " + e.getMessage());
             return null;
@@ -183,7 +223,7 @@ public class AuctionClient {
                     if (response != null && response.getType() == Message.MessageType.SUCCESS) {
                         String objId = response.getString("object_id");
                         String desc = response.getString("description");
-                        System.out.println("\n[Poller]> Currently Auctioning: " + desc + " (ID: " + objId + ")");
+                        System.out.println("[Poller]> Currently Auctioning: " + desc + " (ID: " + objId + ")");
 
                         evaluateInterest(objId);
                     }
@@ -222,6 +262,11 @@ public class AuctionClient {
     public void evaluateInterest(String objId) {
         double randInterest = Math.random();
 
+        if (objId.contains(this.tokenID) || (directoryPath != null && directoryPath.contains(objId.split("_")[2]))) {
+            System.out.println("[Poller]> Skipping item " + objId + " because I am the seller.");
+            return;
+        }
+
         if (randInterest < 0.6) {
             System.out
                     .println("[Poller]> 60% Check Passed! I am interested in item " + objId + ". Fetching details...");
@@ -250,7 +295,7 @@ public class AuctionClient {
 
                     Message placeBid = new Message(Message.MessageType.PLACE_BID);
                     placeBid.put("object_id", objId);
-                    placeBid.put("bid_amount", newBid); // <--- Added the missing bid amount!
+                    placeBid.put("bid_amount", newBid);
 
                     System.out.println("[Poller]> Attempting to place bid of " + newBid + "...");
 

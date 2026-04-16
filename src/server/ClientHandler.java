@@ -102,11 +102,14 @@ public class ClientHandler implements Runnable {
             case GET_CURRENT_AUCTION -> handleGetCurrentAuction(request);
             case GET_AUCTION_DETAILS -> handleGetAuctionDetails(request);
             case PLACE_BID -> handlePlaceBid(request);
+            case CONFIRM_OWNERSHIP -> handleOwnership(request);
 
             // Clients should NOT send SUCCESS/ERROR
             default -> error("Unsupported message type: " + request.getType());
         };
     }
+
+
 
     // ----------------------------------------------------------------
     // Account handlers
@@ -170,7 +173,7 @@ public class ClientHandler implements Runnable {
     }
 
     // ----------------------------------------------------------------
-    // Auction handlers — delegates to AuctionManager (to be implemented)
+    // Auction handlers
     // ----------------------------------------------------------------
 
     private Message handleRequestAuction(Message req) {
@@ -224,6 +227,11 @@ public class ClientHandler implements Runnable {
             return error("Missing parameters.");
 
         return auctionManager.placeBid(token, objectId, bidAmount);
+    }
+
+    private Message handleOwnership(Message request) {
+        return new Message(MessageType.SUCCESS);
+
     }
 
     // ----------------------------------------------------------------
