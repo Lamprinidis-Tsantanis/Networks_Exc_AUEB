@@ -26,7 +26,7 @@ public class DataStore {
 
     private DataStore() {}
 
-    public static DataStore getInstance() {
+    public synchronized static DataStore getInstance() {
         if (singletonInstance == null) {
             singletonInstance = new DataStore();
         }

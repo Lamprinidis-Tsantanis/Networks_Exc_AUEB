@@ -262,6 +262,11 @@ public class AuctionClient {
     public void evaluateInterest(String objId) {
         double randInterest = Math.random();
 
+        if (objId.contains(this.tokenID) || (directoryPath != null && directoryPath.contains(objId.split("_")[2]))) {
+            System.out.println("[Poller]> Skipping item " + objId + " because I am the seller.");
+            return;
+        }
+
         if (randInterest < 0.6) {
             System.out
                     .println("[Poller]> 60% Check Passed! I am interested in item " + objId + ". Fetching details...");

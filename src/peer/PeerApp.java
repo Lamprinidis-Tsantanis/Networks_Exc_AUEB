@@ -12,9 +12,12 @@ public class PeerApp {
     // private static String myIpAddr = null;
     // private static int myPort = 0;
 
+
     // UI to Initialize them
     private static String username = "";
     private static String password = "";
+
+    private static String sharedDirPath;
 
     private static PeerServer myPeerServer = null;
     private static AuctionClient myAuctionClient = null;
@@ -22,12 +25,15 @@ public class PeerApp {
     private static ItemGenerator generator = null;
 
     public static void main(String[] args) {
-        // initialize components
+
         myPeerServer = new PeerServer();
         myPeerServer.start();
 
+        sharedDirPath = "shared_directory_" + generateRandom("peer");
+        myPeerServer.setDirectory(sharedDirPath);
+
         myAuctionClient = new AuctionClient();
-        myAuctionClient.connect(myPeerServer.getDirectory());
+        myAuctionClient.connect(sharedDirPath);
 
         // initialize random username and password
         username = generateRandom("user");
@@ -57,8 +63,8 @@ public class PeerApp {
         myAuctionClient.startPolling();
 
         try {
-            System.out.println("[PeerApp]> App is running. Waiting for 2 minutes to test poller...");
-            Thread.sleep(125000);
+            System.out.println("[PeerApp]> App is running. In 5 minutes it will logout and stop");
+            Thread.sleep(3000000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -129,9 +135,9 @@ public class PeerApp {
     }
 
     /** Starts ItemGenerator */
+
     private static void startGenerator() {
-        String sharedDirPath = "shared_directory_" + username; // unique shared directory name so multiple clients can
-                                                               // exist in the same system
+
         myPeerServer.setDirectory(sharedDirPath);
 
         generator = new ItemGenerator(myAuctionClient, username, sharedDirPath);

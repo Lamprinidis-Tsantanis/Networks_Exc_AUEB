@@ -57,7 +57,23 @@ public class TransactionHandler implements Runnable {
 
     private byte[] fetchFileFromServer() throws TransactionException{
         try(Socket socket = new Socket()) {
-            socket.connect(new java.net.InetSocketAddress(sellerTransIp, sellerTransPort), CONNECTION_TIMEOUT);
+            int retries = 3;
+            while (retries > 0) {
+                try {
+                    socket.connect(new java.net.InetSocketAddress(sellerTransIp, sellerTransPort), CONNECTION_TIMEOUT);
+                    break; // Success!
+                } catch (IOException e) {
+                    retries--;
+                    if (retries == 0) throw e;
+                    try {
+                        Thread.sleep(1000); // Wait 1 second and try again
+                    } catch (InterruptedException ex) {
+                        String reason = ex.getMessage();
+                        throw new TransactionException(
+                                "Seller rejected transfer: " + (reason != null ? reason : "unknown reason"));
+                    }
+                }
+            }
 
             // set in/out
             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
@@ -77,20 +93,19 @@ public class TransactionHandler implements Runnable {
             if (response == null) {
                 throw new TransactionException("Seller returned null response.");
             }
-            if (response.getType() != MessageType.SUCCESS) {
-                String reason = response.getString("message");
-                throw new TransactionException(
-                        "Seller rejected transfer: " + (reason != null ? reason : "unknown reason"));
-            }
-            byte[] fileBytes = (byte[]) in.readObject();
+            if (response.getType() == MessageType.SUCCESS) {
+                String fileContent = response.getString("file_data");
+                byte[] fileBytes = fileContent.getBytes();
+                if (fileBytes == null || fileBytes.length == 0) {
+                    throw new TransactionException("Seller sent empty file for item: " + objectId);
+                }
 
-            if (fileBytes == null || fileBytes.length == 0) {
-                throw new TransactionException("Seller sent empty file for item: " + objectId);
-            }
 
-            System.out.println("[TransactionHandler]> Received " + fileBytes.length
-                    + " bytes from seller for item: " + objectId);
-            return fileBytes;
+                System.out.println("[TransactionHandler]> Received " + fileBytes.length
+                        + " bytes from seller for item: " + objectId);
+                return fileBytes;
+            }
+            throw new TransactionException("Seller returned non-successful response.");
 
         } catch (java.net.SocketTimeoutException e) {
             throw new TransactionException(

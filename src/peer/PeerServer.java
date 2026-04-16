@@ -138,6 +138,7 @@ public class PeerServer extends Thread {
                                 int sellerTransPort = Integer.parseInt(request.getString("seller_trans_port"));
 
                                 new Thread(new TransactionHandler(sellerTransIp, sellerTransPort, objectId, finalPrice, directoryPath,PeerApp.getAuctionClient())).start();
+                                break;
 
                             case "SOLD":
                                 objectId   = request.getString("object_id");
@@ -145,6 +146,7 @@ public class PeerServer extends Thread {
                                 finalPrice = Double.parseDouble(request.getString("final_price"));
                                 String buyerUsername = request.getString("buyer_username");
                                 int    buyerToken   = Integer.parseInt(request.getString("buyer_token"));
+                                break;
 
 
 
