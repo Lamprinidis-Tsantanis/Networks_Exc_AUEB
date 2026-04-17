@@ -114,18 +114,16 @@ public class AuctionManager {
      */
     public Object[] sendAuctionDetails() {
         if (currentAuctionThread != null && currentAuctionThread.isActive()) {
-            Item activeItem = currentAuctionThread.getAuctioningItem();
             String sellerToken = currentAuctionThread.getSellerToken();
 
-            if (activeItem != null) {
+            if (currentAuctionThread != null && currentAuctionThread.isActive()) {
+                Item activeItem = currentAuctionThread.getAuctioningItem();
                 double highestBid = currentAuctionThread.getHighestBid();
                 long remainingTime = currentAuctionThread.getAuctionTimeLeft();
 
                 return new Object[] { sellerToken, highestBid, remainingTime };
             }
         }
-
-        // Return null if no auction is active
         return null;
     }
 
