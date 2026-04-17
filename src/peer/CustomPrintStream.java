@@ -24,6 +24,7 @@ public class CustomPrintStream extends PrintStream {
         } else {
             original.println();
         }
+        original.flush();
     }
 
     @Override
@@ -31,11 +32,13 @@ public class CustomPrintStream extends PrintStream {
         if (x != null && !x.isEmpty()) {
             original.print("[" + username + "] " + x);
         }
+        original.flush();
     }
 
     @Override
     public PrintStream printf(String format, Object... args) {
         original.printf("[" + username + "] " + format, args);
+        original.flush();
         return null;
     }
 }
