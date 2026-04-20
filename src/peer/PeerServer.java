@@ -78,8 +78,7 @@ public class PeerServer extends Thread {
 
         @Override
         public void run() {
-            try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
-                 ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+            try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
                 Message request = (Message) in.readObject();
                 if (request == null || request.getType() == null)
@@ -90,28 +89,29 @@ public class PeerServer extends Thread {
                     case TRANSACTION:
                         System.out.println("[PeerServer]> Received TRANSACTION request from a buyer.");
                         String objId = request.getString("object_id");
-
                         Path filePath = Paths.get(directoryPath, objId + ".txt");
 
-                        try {
-                            String fileContent = new String(Files.readAllBytes(filePath));
+                        try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+                            try {
+                                String fileContent = new String(Files.readAllBytes(filePath));
 
-                            Message successMsg = new Message(Message.MessageType.SUCCESS);
-                            successMsg.put("file_data", fileContent);
+                                Message successMsg = new Message(Message.MessageType.SUCCESS);
+                                successMsg.put("file_data", fileContent);
 
-                            out.writeObject(successMsg);
-                            out.flush();
-                            System.out.println("[PeerServer]> Sent file contents for " + objId + " to buyer.");
+                                out.writeObject(successMsg);
+                                out.flush();
+                                System.out.println("[PeerServer]> Sent file contents for " + objId + " to buyer.");
 
-                            Files.delete(filePath);
-                            System.out.println("[PeerServer]> Deleted local file: " + filePath.getFileName());
+                                Files.delete(filePath);
+                                System.out.println("[PeerServer]> Deleted local file: " + filePath.getFileName());
 
-                        } catch (IOException e) {
-                            Message errorMsg = new Message(Message.MessageType.ERROR);
-                            errorMsg.put("message", "Seller could not read or find the file.");
-                            out.writeObject(errorMsg);
-                            out.flush();
-                            System.err.println("[PeerServer]> Failed transaction for " + objId + ": " + e.getMessage());
+                            } catch (IOException e) {
+                                Message errorMsg = new Message(Message.MessageType.ERROR);
+                                errorMsg.put("message", "Seller could not read or find the file.");
+                                out.writeObject(errorMsg);
+                                out.flush();
+                                System.err.println("[PeerServer]> Failed transaction for " + objId + ": " + e.getMessage());
+                            }
                         }
                         break;
 

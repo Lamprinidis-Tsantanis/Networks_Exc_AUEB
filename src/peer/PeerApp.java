@@ -47,6 +47,7 @@ public class PeerApp {
         tokenID = login(username, password);
 
         System.setOut(new CustomPrintStream(System.out, username));
+        System.setErr(new CustomPrintStream(System.err, username));
 
         myAuctionClient.setTokenID(tokenID);
         myAuctionClient.setUsername(username);
