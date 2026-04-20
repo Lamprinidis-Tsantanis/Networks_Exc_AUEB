@@ -2,8 +2,6 @@ package peer;
 
 import models.Message;
 import models.Message.MessageType;
-
-
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -11,16 +9,12 @@ import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 
 public class TransactionHandler implements Runnable {
     private String objectId ;
-    private String objectDesc ;
     private double finalPrice ;
-
     private String sellerTransIp;
     private int sellerTransPort;
-
     private  String sharedDir;
     private AuctionClient auctionClient;
 
@@ -55,32 +49,14 @@ public class TransactionHandler implements Runnable {
 
 
 
-    private byte[] fetchFileFromServer() throws TransactionException{
-        try(Socket socket = new Socket()) {
-            int retries = 3;
-            while (retries > 0) {
-                try {
-                    socket.connect(new java.net.InetSocketAddress(sellerTransIp, sellerTransPort), CONNECTION_TIMEOUT);
-                    break; // Success!
-                } catch (IOException e) {
-                    retries--;
-                    if (retries == 0) throw e;
-                    try {
-                        Thread.sleep(1000); // Wait 1 second and try again
-                    } catch (InterruptedException ex) {
-                        String reason = ex.getMessage();
-                        throw new TransactionException(
-                                "Seller rejected transfer: " + (reason != null ? reason : "unknown reason"));
-                    }
-                }
-            }
+    private byte[] fetchFileFromServer() throws TransactionException {
+        try (Socket socket = new Socket()) {
+            socket.connect(new java.net.InetSocketAddress(sellerTransIp, sellerTransPort), CONNECTION_TIMEOUT);
 
-            // set in/out
             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
             out.flush();
             ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
 
-            // send request to server for the transaction
             Message confirm = new Message(Message.MessageType.TRANSACTION);
             confirm.put("object_id",   objectId);
             confirm.put("winning_bid", String.valueOf(finalPrice));
@@ -88,7 +64,6 @@ public class TransactionHandler implements Runnable {
             out.flush();
             out.reset();
 
-            // read response
             Message response = (Message) in.readObject();
             if (response == null) {
                 throw new TransactionException("Seller returned null response.");
@@ -96,11 +71,9 @@ public class TransactionHandler implements Runnable {
             if (response.getType() == MessageType.SUCCESS) {
                 String fileContent = response.getString("file_data");
                 byte[] fileBytes = fileContent.getBytes();
-                if (fileBytes == null || fileBytes.length == 0) {
+                if (fileBytes.length == 0) {
                     throw new TransactionException("Seller sent empty file for item: " + objectId);
                 }
-
-
                 System.out.println("[TransactionHandler]> Received " + fileBytes.length
                         + " bytes from seller for item: " + objectId);
                 return fileBytes;
@@ -108,14 +81,11 @@ public class TransactionHandler implements Runnable {
             throw new TransactionException("Seller returned non-successful response.");
 
         } catch (java.net.SocketTimeoutException e) {
-            throw new TransactionException(
-                    "Timed out connecting to seller at " + sellerTransIp + ":" + sellerTransPort);
+            throw new TransactionException("Timed out connecting to seller at " + sellerTransIp + ":" + sellerTransPort);
         } catch (IOException e) {
-            throw new TransactionException(
-                    "I/O error during seller connection: " + e.getMessage());
+            throw new TransactionException("I/O error during seller connection: " + e.getMessage());
         } catch (ClassNotFoundException e) {
-            throw new TransactionException(
-                    "Received an unrecognised object from seller: " + e.getMessage());
+            throw new TransactionException("Received an unrecognised object from seller: " + e.getMessage());
         }
     }
     private void saveFileToDisk(byte[] fileBytes) throws TransactionException {

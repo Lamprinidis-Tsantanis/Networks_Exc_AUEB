@@ -17,7 +17,7 @@ public class AccountManager {
      * @return {@code true} if registration succeeded, false if the username is already taken.
      */
     public boolean register(String username, String password) {
-        if (DataStore.userExists(username)) {return false;}
+        if (dataStore.userExists(username)) { return false; }
         return dataStore.registerUser(username, password);
     }
 
@@ -27,15 +27,15 @@ public class AccountManager {
      * @return {@code token_id} if successful, {@code null} if authentication fails or user is
      *         already logged in.
      */
-    public String login(String username, String password, String ipAddress, int port, String p2pIpAddress, int p2pPort) {
-        if (DataStore.validateUser(username, password)) {
+    public synchronized String login(String username, String password, String ipAddress, int port, String p2pIpAddress, int p2pPort) {
+        if (dataStore.validateUser(username, password)) {
 
-            if (DataStore.isUserLoggedIn(username)) {
+            if (dataStore.isUserLoggedIn(username)) {
                 return null;
             }
 
             String tokenId = UUID.randomUUID().toString();
-            boolean sessionAdded = DataStore.addSession(tokenId, username, ipAddress, port, p2pIpAddress, p2pPort);
+            boolean sessionAdded = dataStore.addSession(tokenId, username, ipAddress, port, p2pIpAddress, p2pPort);
 
             if (sessionAdded) {
                 return tokenId;

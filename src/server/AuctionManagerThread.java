@@ -2,7 +2,6 @@ package server;
 
 import models.Item;
 import models.Message;
-
 import java.util.Set;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,15 +16,14 @@ public class AuctionManagerThread extends Thread {
 
     private final Set<String> activeBidders = Collections
             .newSetFromMap(new ConcurrentHashMap<>());
-
     // bid state
     private double highestBid;
     private String highestBidderToken;
     private final ReentrantLock bidLock = new ReentrantLock();
-
     // timer
-    private long auctionTimeLeft; // in seconds
-    private boolean active;
+    private volatile long auctionTimeLeft; // in seconds
+    private volatile boolean active;
+    private volatile boolean cancelled = false;
 
     public AuctionManagerThread(AuctionManager auctionManager, DataStore dataStore, Item item, String sellerToken) {
         this.auctionManager = auctionManager;
@@ -72,6 +70,7 @@ public class AuctionManagerThread extends Thread {
     // ----------------------------------------------------------------
 
     public void cancelAuction() {
+        this.cancelled = true;
         this.active = false;
         this.interrupt();
     }
@@ -103,39 +102,57 @@ public class AuctionManagerThread extends Thread {
     }
 
     public void finalizeAuction() {
+        if (cancelled) {
+            System.out.println("\n[AuctionManagerThread]> === AUCTION CANCELLED ===");
+            return;
+        }
+
         bidLock.lock();
         try {
             System.out.println("\n[AuctionManagerThread]> === AUCTION COMPLETE ===");
 
+            boolean success = false;
+
             if (highestBidderToken != null) {
                 // AUCTION WON
                 String winnerUsername = dataStore.getUsernameByToken(highestBidderToken);
-
                 DataStore.SessionRecord sellerSession = dataStore.getSession(sellerToken);
-                String sellerUsername = sellerSession.username;
-                String sellerp2pIp = sellerSession.p2pIpAddress;
-                Integer sellerp2pPort = sellerSession.p2pPort;
 
+                if (sellerSession == null) {
+                    System.out.println("[AuctionManagerThread]> Seller disconnected before auction ended.");
+                } else if (winnerUsername == null) {
+                    System.out.println("[AuctionManagerThread]> Winner disconnected before auction ended.");
+                } else {
+                    String sellerUsername = sellerSession.username;
+                    String sellerp2pIp = sellerSession.p2pIpAddress;
+                    Integer sellerp2pPort = sellerSession.p2pPort;
 
-                notifier.notifyAuctionWon(highestBidderToken, auctioningItem, highestBid, sellerUsername,sellerp2pIp,sellerp2pPort);
-                notifier.notifySellerSold(sellerToken, auctioningItem, highestBid, winnerUsername,
-                        highestBidderToken);
+                    notifier.notifyAuctionWon(highestBidderToken, auctioningItem, highestBid, sellerUsername, sellerp2pIp,
+                            sellerp2pPort);
+                    notifier.notifySellerSold(sellerToken, auctioningItem, highestBid, winnerUsername, highestBidderToken);
 
-                dataStore.addSellerCount(sellerUsername);
-                System.out.println("[AuctionManagerThread]> Sold to: " + winnerUsername
-                        + " | Final price: " + highestBid);
-            } else {
+                    dataStore.addSellerCount(sellerUsername);
+                    dataStore.addBidderCount(winnerUsername);
+
+                    System.out.println("[AuctionManagerThread]> Sold to: " + winnerUsername
+                            + " | Final price: " + highestBid);
+                    success = true;
+                }
+            }
+
+            if (!success) {
                 // AUCTION FAILED
                 notifier.notifySellerNoBids(sellerToken, auctioningItem);
-                System.out.println("[AuctionManagerThread]> AUCTION FAILED - No bids placed");
+                System.out.println("[AuctionManagerThread]> AUCTION FAILED - No bids placed or participants disconnected.");
+                
+                if (highestBidderToken != null && dataStore.getSession(sellerToken) == null) {
+                    auctionManager.notifyBiddersAuctionCancelled(activeBidders);
+                }
+
+                highestBidderToken = null; // Clear token so AuctionManager knows it failed
             }
 
-            try {
-                auctionManager.onAuctionComplete(auctioningItem, highestBidderToken, highestBid);
-            } catch (InterruptedException e) {
-                System.err.println(
-                        "[AuctionManagerThread]> Failed to start next auction: " + e.getMessage());
-            }
+            auctionManager.onAuctionComplete(auctioningItem, highestBidderToken, highestBid);
 
         } finally {
             bidLock.unlock();
@@ -163,17 +180,13 @@ public class AuctionManagerThread extends Thread {
             this.highestBidderToken = tokenId;
             activeBidders.add(tokenId);
 
-            // FIX #2: addBidderCount expects a username, not a tokenId.
             String bidderUsername = dataStore.getUsernameByToken(tokenId);
-            dataStore.addBidderCount(bidderUsername);
-
             System.out.println("[AuctionManagerThread]> New bid placed: " + bidAmount
                     + " by: " + bidderUsername);
         } finally {
             bidLock.unlock();
         }
 
-        // Capture values after releasing the lock to avoid holding lock during I/O
         double capturedBid = highestBid;
         String capturedBidderToken = highestBidderToken;
 

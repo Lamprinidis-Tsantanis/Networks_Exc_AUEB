@@ -13,18 +13,12 @@ public class AuctionManager {
     }
 
     /**
-     * Validates the tokenId and adds items into the auctionQueue
-     * Uses the enqueue of Datastore and saves it in its correct data structure
-     * 
+     * Validates the tokenId and adds items into the auctionQueue.
+     *
      * @param tokenId  token of the user requesting auction.
      * @param itemList List of items that a user is putting in auction.
      * @return {@code true} if the tokenId is successfully validated and the list
-     *         contains items<br>
-     *         {@code false} if the tokenId is not active or the list is empty or
-     *         null<br>
-     *         <br>
-     *         <br>
-     *         {@code putting a lot of items may overload the datastore and provide no Error, only record in terminal by enqueue }
+     *         contains items, {@code false} otherwise.
      */
     public boolean getAuctionRequest(String tokenId, List<Item> itemList) {
         String error = "[AuctionManager]> ERROR while trying to add items to AuctionList: ";
@@ -38,89 +32,83 @@ public class AuctionManager {
         }
         for (Item item : itemList) {
             dataStore.enqueueItem(item, tokenId);
-        } // here is a bit more complicated. putting a lot of items may overload the
-          // datastore and provide no Error
+        }
         System.out.println("[AuctionManager]> Received " + itemList.size() + " items from session " + tokenId);
         return true;
     }
 
     /**
-     * starts an auction by de-queueing the first item from the datastore, and by
-     * calling the auction manager thread
+     * Continuously dequeues items and runs one auction at a time.
+     * Blocks on dequeueItem() when the queue is empty, and waits for the
+     * auction thread to finish before starting the next one.
      */
     public void startAuction() throws InterruptedException {
-        try {
+        while (true) {
             DataStore.AuctionEntry nextAuctionEntry = dataStore.dequeueItem();
             Item nextItem = nextAuctionEntry.auctionItem;
             String sellerToken = nextAuctionEntry.sellerTokenId;
+
+            if (!dataStore.isSessionActive(sellerToken)) {
+                System.out.println("[AuctionManager]> Skipping item " + nextItem.getObjectId() + " because seller disconnected.");
+                continue;
+            }
 
             System.out.println("[AuctionManager]> Starting auction for Item: " + nextItem.getObjectId());
 
             currentAuctionThread = new AuctionManagerThread(this, dataStore, nextItem, sellerToken);
             currentAuctionThread.startAuction();
-
-        } catch (InterruptedException e) {
-            System.err.println("[AuctionManager]> Interrupted: " + e.getMessage());
+            currentAuctionThread.join();
         }
     }
 
-    public void onAuctionComplete(Item item, String winnerToken, double finalBid) throws InterruptedException {
+    public void onAuctionComplete(Item item, String winnerToken, double finalBid) {
         System.out.println("[AuctionManager]> === AUCTION COMPLETE ===");
         System.out.println("[AuctionManager]> Item: " + item.getObjectId());
         System.out.println("[AuctionManager]> Winner: " +
                 (winnerToken != null ? winnerToken : "No bids"));
         System.out.println("[AuctionManager]> Final price: " + finalBid);
-
-        // Start next auction if any
-        startAuction();
     }
 
     /**
-     * Retrieves the details of the currently active auction.
-     * Checks the active auction thread to extract the objectId and description of
-     * the item being auctioned.
+     * Retrieves the object ID and description of the currently active auction.
+     * Also triggers a seller liveness check before returning data.
      *
-     * @return {@code String[]} containing exactly two elements: the objectId at
-     *         index 0 and the description at index 1 <br>
-     *         {@code null} if there is currently no active auction running<br>
-     *         <br>
-     *         <br>
-     *         {@code This method relies on currentAuctionThread being correctly managed by startAuction and onAuctionComplete }
+     * @return {@code String[]} with objectId at [0] and description at [1],
+     *         or {@code null} if no auction is active.
      */
     public String[] sendCurrentAuction() {
-        if (currentAuctionThread != null) {
-             Item activeItem = currentAuctionThread.getAuctioningItem();
-            if (activeItem != null) {
-                return new String[] { activeItem.getObjectId(), activeItem.getDescription() };
+        AuctionManagerThread activeThread = currentAuctionThread;
+        if (activeThread != null && activeThread.isActive()) {
+            checkActive(activeThread.getSellerToken());
+
+            activeThread = currentAuctionThread;
+            if (activeThread != null && activeThread.isActive()) {
+                Item activeItem = activeThread.getAuctioningItem();
+                if (activeItem != null) {
+                    return new String[] { activeItem.getObjectId(), activeItem.getDescription() };
+                }
             }
         }
-
         return null;
     }
 
     /**
-     * Retrieves the details of the currently active auction.
-     * Queries the active auction thread and the datastore for current bid,
-     * remaining time, and seller info.
+     * Retrieves details of the currently active auction.
+     * Also triggers a seller liveness check before returning data.
      *
-     * @return {@code Object[]} containing exactly three elements:<br>
-     *         [0] -> seller tokenId (String)<br>
-     *         [1] -> current highestBid (Double)<br>
-     *         [2] -> remainingTime in seconds (Long)<br>
-     *         {@code null} if there is currently no active auction running.<br>
-     *         <br>
-     *         <br>
-     *         {@code Relies on currentAuctionThread being active and exposing its internal state.}
+     * @return {@code Object[]} with sellerTokenId at [0], highestBid at [1],
+     *         and remainingTime in seconds at [2], or {@code null} if no auction is active.
      */
     public Object[] sendAuctionDetails() {
-        if (currentAuctionThread != null && currentAuctionThread.isActive()) {
-            String sellerToken = currentAuctionThread.getSellerToken();
+        AuctionManagerThread activeThread = currentAuctionThread;
+        if (activeThread != null && activeThread.isActive()) {
+            checkActive(activeThread.getSellerToken());
 
-            if (currentAuctionThread != null && currentAuctionThread.isActive()) {
-                Item activeItem = currentAuctionThread.getAuctioningItem();
-                double highestBid = currentAuctionThread.getHighestBid();
-                long remainingTime = currentAuctionThread.getAuctionTimeLeft();
-
+            activeThread = currentAuctionThread;
+            if (activeThread != null && activeThread.isActive()) {
+                String sellerToken = activeThread.getSellerToken();
+                double highestBid = activeThread.getHighestBid();
+                long remainingTime = activeThread.getAuctionTimeLeft();
                 return new Object[] { sellerToken, highestBid, remainingTime };
             }
         }
@@ -128,69 +116,74 @@ public class AuctionManager {
     }
 
     /**
-     * Detects if the seller's socket has dropped by attempting a connection
-     * to their PeerServer.
-     * If disconnected, it cancels the active auction, notifies all bidders, and
-     * invalidates the token.
+     * Checks whether the seller identified by sellerTokenId is still reachable
+     * by attempting a connection to their PeerServer p2p port.
+     * If the seller has disconnected, the active auction is cancelled and all
+     * current bidders are notified.
      *
      * @param sellerTokenId The token of the seller to check.
      */
     public void checkActive(String sellerTokenId) {
         DataStore.SessionRecord sellerSession = dataStore.getSession(sellerTokenId);
         if (sellerSession == null) {
+            // Seller logged out gracefully or abruptly disconnected.
+            synchronized (this) {
+                AuctionManagerThread activeThread = currentAuctionThread;
+                if (activeThread != null && activeThread.isActive()) {
+                    if (sellerTokenId.equals(activeThread.getSellerToken())) {
+                        System.out.println("[AuctionManager]> Cancelling active auction due to seller logout.");
+                        activeThread.cancelAuction();
+                        notifyBiddersAuctionCancelled(activeThread.getActiveBidders());
+                        currentAuctionThread = null;
+                    }
+                }
+            }
             return;
         }
 
         boolean isAlive = true;
-        try (java.net.Socket socket = new java.net.Socket(sellerSession.ipAddress, sellerSession.port);
-                java.io.ObjectOutputStream out = new java.io.ObjectOutputStream(socket.getOutputStream())) {
-
-            // Ping the seller with a CHECK_ACTIVE message
-            models.Message msg = new models.Message(models.Message.MessageType.CHECK_ACTIVE);
-            out.writeObject(msg);
-            out.flush();
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress(sellerSession.p2pIpAddress, sellerSession.p2pPort), 2000);
+            try (java.io.ObjectOutputStream out = new java.io.ObjectOutputStream(socket.getOutputStream())) {
+                models.Message msg = new models.Message(models.Message.MessageType.CHECK_ACTIVE);
+                out.writeObject(msg);
+                out.flush();
+            }
         } catch (java.io.IOException e) {
-            /*
-             * Connection failed: Seller has dropped
-             */
             isAlive = false;
         }
 
         if (!isAlive) {
             System.out.println("[AuctionManager]> Seller " + sellerTokenId + " disconnected. Cleaning up.");
 
-            // Invalidate seller token
             dataStore.removeSession(sellerTokenId);
 
-            // Cancel active auction if it belongs to this seller
-            if (currentAuctionThread != null && currentAuctionThread.isActive()) {
-                if (sellerTokenId.equals(currentAuctionThread.getSellerToken())) {
-                    System.out.println("[AuctionManager]> Cancelling active auction due to seller disconnect.");
+            synchronized (this) {
+                AuctionManagerThread activeThread = currentAuctionThread;
+                if (activeThread != null && activeThread.isActive()) {
+                    if (sellerTokenId.equals(activeThread.getSellerToken())) {
+                        System.out.println("[AuctionManager]> Cancelling active auction due to seller disconnect.");
 
-                    currentAuctionThread.cancelAuction();
-
-                    // Notify all current bidders
-                    notifyBiddersAuctionCancelled(currentAuctionThread.getActiveBidders());
-
-                    // Clear the active thread state
-                    currentAuctionThread = null;
+                        activeThread.cancelAuction();
+                        notifyBiddersAuctionCancelled(activeThread.getActiveBidders());
+                        currentAuctionThread = null;
+                    }
                 }
             }
         }
     }
 
     /**
-     * Helper method to connect to each bidder's PeerServer and send an
-     * AUCTION_CANCELLED notification.
+     * Sends an AUCTION_CANCELLED notification to each bidder's PeerServer p2p port.
      */
-    private void notifyBiddersAuctionCancelled(java.util.Set<String> bidders) {
+    public void notifyBiddersAuctionCancelled(java.util.Set<String> bidders) {
         if (bidders == null || bidders.isEmpty())
             return;
 
         for (String bidderToken : bidders) {
             DataStore.SessionRecord bidderSession = dataStore.getSession(bidderToken);
             if (bidderSession != null) {
-                try (java.net.Socket socket = new java.net.Socket(bidderSession.ipAddress, bidderSession.port);
+                try (java.net.Socket socket = new java.net.Socket(bidderSession.p2pIpAddress, bidderSession.p2pPort);
                         java.io.ObjectOutputStream out = new java.io.ObjectOutputStream(socket.getOutputStream())) {
 
                     models.Message msg = new models.Message(models.Message.MessageType.AUCTION_RESULT);
@@ -200,16 +193,16 @@ public class AuctionManager {
                     out.writeObject(msg);
                     out.flush();
                 } catch (java.io.IOException e) {
-                    System.err
-                            .println("[AuctionManager]> Failed to notify bidder " + bidderToken + " of cancellation.");
+                    System.err.println("[AuctionManager]> Failed to notify bidder " + bidderToken + " of cancellation.");
                 }
             }
         }
     }
 
     public Message placeBid(String token, String objectId, double bidAmount) {
-        if (currentAuctionThread != null && currentAuctionThread.isActive()) {
-            return currentAuctionThread.placeBid(token, objectId, bidAmount);
+        AuctionManagerThread activeThread = currentAuctionThread;
+        if (activeThread != null && activeThread.isActive()) {
+            return activeThread.placeBid(token, objectId, bidAmount);
         }
         Message msg = new Message(Message.MessageType.ERROR);
         msg.put("message", "No active auction right now.");

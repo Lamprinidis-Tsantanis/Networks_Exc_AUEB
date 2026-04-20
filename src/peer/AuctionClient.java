@@ -2,8 +2,6 @@ package peer;
 
 import models.Message;
 import utils.Constants;
-
-import java.awt.TrayIcon.MessageType;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -14,8 +12,7 @@ import java.net.UnknownHostException;
  * AuctionClient handles all outgoing communication from the Peer to the central
  * AuctionServer.
  * It establishes a persistent connection, manages serialization streams,
- * and automatically injects the session token into every request once logged
- * in.
+ * and automatically injects the session token into every request once logged in.
  */
 public class AuctionClient {
 
@@ -23,20 +20,29 @@ public class AuctionClient {
     private ObjectOutputStream writer;
     private ObjectInputStream reader;
     private String tokenID = null;
+    private String username = null;
     private boolean isPolling = false;
+    private volatile boolean isDisconnecting = false;
     private Thread pollingThread;
     private String directoryPath;
 
     private final java.util.concurrent.LinkedBlockingQueue<Message> responseBuffer =
             new java.util.concurrent.LinkedBlockingQueue<>();
+    private final java.util.concurrent.LinkedBlockingQueue<Message> notificationBuffer =
+            new java.util.concurrent.LinkedBlockingQueue<>();
     private Thread responseReaderThread;
+    private Thread notificationDispatchThread;
 
-    private final Object socketLock = new Object();
+    private final Object writeLock = new Object();
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
 
     /**
-     * Connects to the AuctionServer using the IP and Port defined in
-     * Constants.java.
+     * Connects to the AuctionServer using the IP and Port defined in Constants.java.
      * Initializes the output and input streams for object serialization.
+     * Starts a background reader thread and a dedicated notification dispatcher thread.
      *
      * @return {@code true} if connection was successful, {@code false} otherwise.
      */
@@ -48,23 +54,43 @@ public class AuctionClient {
             writer.flush();
             reader = new ObjectInputStream(requestSocket.getInputStream());
 
-            // START response reader thread
             responseReaderThread = new Thread(() -> {
                 while (true) {
                     try {
                         Message msg = (Message) reader.readObject();
-                        if (msg != null) {
+                        if (msg == null) continue;
+
+                        if (msg.getType() == Message.MessageType.AUCTION_RESULT
+                                || msg.getType() == Message.MessageType.CHECK_ACTIVE) {
+                            notificationBuffer.offer(msg);
+                        } else {
                             responseBuffer.offer(msg);
                         }
 
                     } catch (IOException | ClassNotFoundException e) {
-                        System.err.println("[AuctionClient]> Reader thread error: " + e.getMessage());
+                        if (!isDisconnecting) {
+                            System.err.println("[AuctionClient]> Reader thread error: " + e.getMessage());
+                        }
                         break;
                     }
                 }
             });
             responseReaderThread.setDaemon(true);
             responseReaderThread.start();
+
+            notificationDispatchThread = new Thread(() -> {
+                while (true) {
+                    try {
+                        Message notification = notificationBuffer.take();
+                        handleNotification(notification);
+                    } catch (InterruptedException e) {
+                        System.out.println("[AuctionClient]> Notification dispatcher stopped.");
+                        break;
+                    }
+                }
+            });
+            notificationDispatchThread.setDaemon(true);
+            notificationDispatchThread.start();
 
             System.out.println("[AuctionClient]> Successfully connected to AuctionServer at "
                     + Constants.SERVER_IP + ":" + Constants.SERVER_PORT);
@@ -80,14 +106,63 @@ public class AuctionClient {
     }
 
     /**
+     * Handles asynchronous notifications pushed by the server (AUCTION_RESULT, CHECK_ACTIVE).
+     * Runs exclusively on the notificationDispatchThread so it never races with sendAndReceive().
+     */
+    private void handleNotification(Message msg) {
+        if (msg.getType() == Message.MessageType.CHECK_ACTIVE) {
+            return;
+        }
+
+        String status = msg.getString("status");
+        if (status == null) return;
+
+        System.out.println("[AuctionClient]> NOTIFICATION [" + status + "]: " + msg.getString("message"));
+
+        switch (status) {
+            case "WON":
+                String sellerIp   = msg.getString("p2pIpAddress");
+                int sellerPort    = (Integer) msg.get("p2pPort");
+                String objId      = msg.getString("object_id");
+                double price      = Double.parseDouble(msg.get("final_price").toString());
+                System.out.println("[AuctionClient]> You WON " + objId + "! Launching Transaction...");
+                new Thread(new TransactionHandler(sellerIp, sellerPort, objId, price, directoryPath, this)).start();
+                break;
+
+            case "NEW_HIGHEST_BID":
+                System.out.println("[AuctionClient]> New highest bid on " + msg.getString("object_id")
+                        + ": " + msg.get("current_bid"));
+                break;
+
+            case "AUCTION_CANCELLED":
+                System.out.println("[AuctionClient]> The current auction was cancelled (seller disconnected).");
+                break;
+
+            case "SOLD":
+                System.out.println("[AuctionClient]> Your item " + msg.getString("object_id")
+                        + " was sold for " + msg.get("final_price")
+                        + " to " + msg.getString("buyer_username") + ".");
+                break;
+
+            case "NO_BIDS":
+                System.out.println("[AuctionClient]> Your item " + msg.getString("object_id")
+                        + " received no bids.");
+                break;
+
+            default:
+                System.out.println("[AuctionClient]> Unhandled notification status: " + status);
+                break;
+        }
+    }
+
+    /**
      * Sends a Message object to the server.
-     * Automatically includes the token_id in the payload if the user is currently
-     * logged in.
+     * Automatically includes the token_id in the payload if the user is logged in.
      *
      * @param msg The Message object to be sent.
      */
-    public synchronized void sendMessage(Message msg) {
-        synchronized (socketLock) {
+    public void sendMessage(Message msg) {
+        synchronized (writeLock) {
             try {
                 if (tokenID != null) {
                     msg.put("token", tokenID);
@@ -104,12 +179,10 @@ public class AuctionClient {
     /**
      * Blocks and waits to receive a Message object from the server.
      *
-     * @return The received Message object, or {@code null} if the connection
-     *         dropped or failed.
+     * @return The received Message object, or {@code null} if the connection dropped.
      */
     public Message receiveMessage() {
         try {
-            // Use timeout to prevent hanging
             return responseBuffer.poll(10, java.util.concurrent.TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             System.err.println("[AuctionClient]> Interrupted: " + e.getMessage());
@@ -118,13 +191,12 @@ public class AuctionClient {
     }
 
     /**
-     * Atomically sends a request and waits for the specific reply.
-     * Synchronized ensures that if the Poller is using the socket,
-     * the User UI will wait until the Poller's full transaction is
-     * finished.
+     * Atomically sends a request and waits for the reply from the responseBuffer.
+     * Notifications (AUCTION_RESULT, CHECK_ACTIVE) are handled by the dedicated
+     * dispatcher thread and never appear in this buffer.
      */
-    public synchronized Message sendAndReceive(Message request) {
-        synchronized (socketLock) {
+    public Message sendAndReceive(Message request) {
+        synchronized (writeLock) {
             try {
                 if (tokenID != null) {
                     request.put("token", tokenID);
@@ -139,48 +211,11 @@ public class AuctionClient {
         }
 
         try {
-            long deadline = System.currentTimeMillis() + 30000; // 30-second timeout
-
-            // Loop through the buffer and ignore async notifications
-            while (System.currentTimeMillis() < deadline) {
-                Message response = responseBuffer.poll(1, java.util.concurrent.TimeUnit.SECONDS);
-
-                if (response != null) {
-                    // 1. Check for Asynchronous Notifications (Like Winning)
-                    if (response.getType() == Message.MessageType.AUCTION_RESULT) {
-                        String status = response.getString("status");
-                        System.out.println("[AuctionClient]> NOTIFICATION: " + response.getString("message"));
-
-                        if ("WON".equals(status)) {
-                            String sellerIp = response.getString("p2pIpAddress");
-                            int sellerPort = Integer.parseInt(response.get("p2pPort").toString());
-                            String objId = response.getString("object_id");
-                            double price = Double.parseDouble(response.get("final_price").toString());
-
-                            System.out.println("[AuctionClient]> You WON " + objId + "! Launching Transaction...");
-
-                            // Start the P2P transfer
-                            new Thread(new TransactionHandler(
-                                    sellerIp, sellerPort, objId, price, directoryPath, this
-                            )).start();
-                        }
-
-                        // This was an async notification, so we 'continue' to keep waiting
-                        // for the actual response to the request we sent.
-                        continue;
-                    }
-
-                    // 2. Check for other server pings (e.g., heartbeat)
-                    if (response.getType() == Message.MessageType.CHECK_ACTIVE) {
-                        continue;
-                    }
-
-                    // 3. If it's not a notification, it's the SUCCESS/ERROR reply we wanted
-                    return response;
-                }
+            Message response = responseBuffer.poll(30, java.util.concurrent.TimeUnit.SECONDS);
+            if (response == null) {
+                System.err.println("[AuctionClient]> Timeout waiting for response");
             }
-            System.err.println("[AuctionClient]> Timeout waiting for response");
-            return null;
+            return response;
         } catch (InterruptedException e) {
             System.err.println("[AuctionClient]> Interrupted waiting for response: " + e.getMessage());
             return null;
@@ -188,8 +223,7 @@ public class AuctionClient {
     }
 
     /**
-     * Sets the session token. To be called by the CLI/UI after a successful LOGIN
-     * request.
+     * Sets the session token. Called after a successful LOGIN.
      *
      * @param tokenID The token UUID provided by the server.
      */
@@ -198,17 +232,8 @@ public class AuctionClient {
     }
 
     /**
-     * Starts a background polling thread that automatically requests the
-     * currently active auction from the central server every 60 seconds.
-     * <p>
-     * When an active auction is received, this thread will print the item's
-     * description and object ID to the console. It then triggers the
-     * {@link #evaluateInterest(String)} method to simulate the user's
-     * interest in the item.
-     * <p>
-     * This loop runs asynchronously on its own thread so it does not block
-     * the main user interface. It will run indefinitely until
-     * {@link #stopPolling()} is explicitly called (e.g. during logout).
+     * Starts a background polling thread that requests the currently active auction
+     * from the server every 60 seconds and evaluates bidding interest.
      */
     public void startPolling() {
         isPolling = true;
@@ -246,37 +271,28 @@ public class AuctionClient {
     }
 
     /**
-     * Simulates bidder interest in a currently active auction using probability.
-     * <p>
-     * This method evaluates a 60% random chance to determine if the peer is
-     * interested in the specified item. If the peer is interested, it constructs
-     * and sends a {@code GET_AUCTION_DETAILS} request to the central server to
-     * retrieve the current state of the auction (seller token, highest bid, and
-     * remaining time) and displays it to the user.
-     * <p>
-     * This method acts as the entry point for automated bidding and sets up the
-     * state required to place a formal bid.
+     * Simulates bidder interest using a 60% probability coin flip.
+     * If interested, fetches auction details and places a bid using the formula:
+     * NewBid = HighestBid * (1 + RAND/10).
      *
      * @param objId The ID of the item currently up for auction.
      */
     public void evaluateInterest(String objId) {
         double randInterest = Math.random();
 
-        if (objId.contains(this.tokenID) || (directoryPath != null && directoryPath.contains(objId.split("_")[2]))) {
+        if (this.username != null && objId.contains(this.username)) {
             System.out.println("[Poller]> Skipping item " + objId + " because I am the seller.");
             return;
         }
 
         if (randInterest < 0.6) {
-            System.out
-                    .println("[Poller]> 60% Check Passed! I am interested in item " + objId + ". Fetching details...");
+            System.out.println("[Poller]> 60% Check Passed! I am interested in item " + objId + ". Fetching details...");
 
             Message reqDetails = new Message(Message.MessageType.GET_AUCTION_DETAILS);
             reqDetails.put("object_id", objId);
             Message response = sendAndReceive(reqDetails);
 
             if (response != null && response.getType() == Message.MessageType.SUCCESS) {
-                // SUCCESS part
                 String sellerToken = response.getString("seller_token");
                 Object highestBid = response.get("highest_bid");
                 Object timeRemaining = response.get("remaining_time");
@@ -287,7 +303,6 @@ public class AuctionClient {
                 System.out.println("   -> Time Left:    " + timeRemaining + " seconds");
                 System.out.println("   -----------------------");
 
-                // PLACE BID part
                 try {
                     double currentHighest = ((Number) highestBid).doubleValue();
                     double newBid = currentHighest * (1 + (Math.random() / 10));
@@ -319,10 +334,10 @@ public class AuctionClient {
     }
 
     /**
-     * Safely closes the socket and streams when shutting down the client
-     * application.
+     * Safely closes the socket and streams when shutting down the client application.
      */
     public void disconnect() {
+        isDisconnecting = true;
         try {
             if (reader != null)
                 reader.close();

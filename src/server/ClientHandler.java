@@ -2,7 +2,6 @@ package server;
 
 import models.Message;
 import models.Message.MessageType;
-
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -23,6 +22,7 @@ public class ClientHandler implements Runnable {
     private final DataStore dataStore;
     private ObjectOutputStream out;
     private ObjectInputStream in;
+    private String currentToken;
 
     public ClientHandler(Socket socket, AccountManager accountManager, AuctionManager auctionManager,
             DataStore dataStore) {
@@ -59,6 +59,12 @@ public class ClientHandler implements Runnable {
         } catch (IOException e) {
             System.err.println(TAG + "> I/O error with " + clientAddress + ": " + e.getMessage());
         } finally {
+            if (currentToken != null) {
+                System.out
+                        .println(TAG + "> Abrupt disconnect detected. Cleaning up session for token: " + currentToken);
+                accountManager.logout(currentToken);
+                dataStore.unregisterClientHandler(currentToken);
+            }
             closeQuietly();
         }
     }
@@ -109,8 +115,6 @@ public class ClientHandler implements Runnable {
         };
     }
 
-
-
     // ----------------------------------------------------------------
     // Account handlers
     // ----------------------------------------------------------------
@@ -122,6 +126,8 @@ public class ClientHandler implements Runnable {
         if (username == null || password == null) {
             return error("Missing username or password.");
         }
+        
+        username = username.toLowerCase();
 
         boolean ok = accountManager.register(username, password);
         if (ok) {
@@ -135,14 +141,26 @@ public class ClientHandler implements Runnable {
         String username = req.getString("username");
         String password = req.getString("password");
         String p2pIpAddress = req.getString("p2pIpAddress");
-        Integer p2pPort = (Integer) req.get("p2pPort");
+
+        Integer p2pPort = null;
+        Object portObj = req.get("p2pPort");
+        if (portObj instanceof Integer) {
+            p2pPort = (Integer) portObj;
+        } else if (portObj instanceof String) {
+            try {
+                p2pPort = Integer.parseInt((String) portObj);
+            } catch (NumberFormatException ignored) {}
+        }
 
         if (username == null || password == null || p2pIpAddress == null || p2pPort == null) {
-            return error("Missing username, password, or peer listening info.");   // <--- UPDATED
+            return error("Missing username, password, or peer listening info."); // <--- UPDATED
         }
+        
+        username = username.toLowerCase();
 
         String token = accountManager.login(username, password, clientAddress, clientPort, p2pIpAddress, p2pPort);
         if (token != null) {
+            this.currentToken = token;
             dataStore.registerClientHandler(token, this);
             Message resp = success("Login successful.");
             resp.put("token", token);
@@ -161,6 +179,11 @@ public class ClientHandler implements Runnable {
         }
         accountManager.logout(token);
         dataStore.unregisterClientHandler(token);
+
+        if (token.equals(this.currentToken)) {
+            this.currentToken = null;
+        }
+
         return success("Logout successful.");
     }
 
@@ -230,8 +253,21 @@ public class ClientHandler implements Runnable {
     }
 
     private Message handleOwnership(Message request) {
-        return new Message(MessageType.SUCCESS);
+        String token = request.getString("token");
+        String objectId = request.getString("object_id");
 
+        if (token == null || objectId == null) {
+            return error("Missing token or object_id in ownership confirmation.");
+        }
+
+        if (!dataStore.isSessionActive(token)) {
+            return error("Session not found or already expired.");
+        }
+
+        System.out.println(TAG + "> Ownership of item " + objectId
+                + " confirmed for token: " + token);
+
+        return success("Ownership confirmed. Item registered to buyer.");
     }
 
     // ----------------------------------------------------------------
@@ -244,12 +280,14 @@ public class ClientHandler implements Runnable {
      * from ObjectOutputStream's internal reference cache on subsequent sends.
      */
     private void send(ObjectOutputStream out, Message message) {
-        try {
-            out.writeObject(message);
-            out.flush();
-            out.reset();
-        } catch (IOException e) {
-            System.err.println(TAG + "> Failed to send response: " + e.getMessage());
+        synchronized (this) {
+            try {
+                out.writeObject(message);
+                out.flush();
+                out.reset();
+            } catch (IOException e) {
+                System.err.println(TAG + "> Failed to send response: " + e.getMessage());
+            }
         }
     }
 

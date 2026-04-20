@@ -11,11 +11,10 @@ import java.util.concurrent.LinkedBlockingDeque;
  */
 public class DataStore {
     /** username is Key */
-    private static final ConcurrentHashMap<String, UserRecord> registeredUsers = new ConcurrentHashMap<>();
-
+    private final ConcurrentHashMap<String, UserRecord> registeredUsers = new ConcurrentHashMap<>();
     /** TokenId is Key */
-    private static final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, ClientHandler> activeClientHandlers = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, SessionRecord> activeSessions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ClientHandler> activeClientHandlers = new ConcurrentHashMap<>();
 
     private final LinkedBlockingDeque<AuctionEntry> auctionQueue = new LinkedBlockingDeque<>();
 
@@ -89,22 +88,21 @@ public class DataStore {
     // ----------------------------------------------------------
 
     /** Returns True if user exists */
-    public static boolean userExists(String username) {
+    public boolean userExists(String username) {
         return registeredUsers.containsKey(username);
     }
 
     /** Adds user to registeredUsers after checking for duplicate username */
     public boolean registerUser(String username, String password) {
-        if (userExists(username)) {
-            return false;
+        if (registeredUsers.putIfAbsent(username, new UserRecord(password)) == null) {
+            System.out.println("[DataStore]> User " + username + " has been registered successfully.");
+            return true;
         }
-        registeredUsers.put(username, new UserRecord(password));
-        System.out.println("[DataStore]> User " + username + " has been registered successfully.");
-        return true;
+        return false;
     }
 
     /** Returns True if username and password match records */
-    public static boolean validateUser(String username, String password) {
+    public boolean validateUser(String username, String password) {
         UserRecord record = registeredUsers.get(username);
         return record != null && record.password.equals(password);
     }
@@ -133,9 +131,8 @@ public class DataStore {
     // SESSION METHODS
     // ----------------------------------------------------------
     /** Creates a new session, returns false if the session already exists */
-    public static boolean addSession(String tokenId, String username, String ipAddress, int port, String p2pIpAddress, int p2pPort) {
-        if (!activeSessions.containsKey(tokenId)) {
-            activeSessions.put(tokenId, new SessionRecord(username, ipAddress, port,p2pIpAddress, p2pPort));
+    public boolean addSession(String tokenId, String username, String ipAddress, int port, String p2pIpAddress, int p2pPort) {
+        if (activeSessions.putIfAbsent(tokenId, new SessionRecord(username, ipAddress, port, p2pIpAddress, p2pPort)) == null) {
             System.out.println("[DataStore]> Session " + username + " has been registered successfully.");
             return true;
         }
@@ -168,7 +165,7 @@ public class DataStore {
     }
 
     /** Returns true if user has an active session */
-    public static boolean isUserLoggedIn(String username) {
+    public boolean isUserLoggedIn(String username) {
         for (SessionRecord s : activeSessions.values()) {
             if (s.username.equals(username))
                 return true;

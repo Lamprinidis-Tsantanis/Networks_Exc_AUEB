@@ -1,13 +1,11 @@
 package peer;
 
 import models.Message;
-import models.Message.MessageType;
 import java.nio.file.Paths;
 import java.nio.file.Path;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.BufferedReader;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
@@ -33,12 +31,15 @@ public class PeerServer extends Thread {
     public void setDirectory(String dir) {
         this.directoryPath = dir;
     }
-    public String getDirectory() {return this.directoryPath;}
+
+    public String getDirectory() {
+        return this.directoryPath;
+    }
 
     @Override
     public void run() {
         try {
-            serverSocket = new ServerSocket(0); // 0 gives us one random available port
+            serverSocket = new ServerSocket(0);
             this.p2pListeningPort = serverSocket.getLocalPort();
             System.out.println("[PeerServer]> Peer's listening server started on random port: " + p2pListeningPort);
 
@@ -68,10 +69,6 @@ public class PeerServer extends Thread {
         }
     }
 
-    /*
-     * Inner class to handle incoming connections from the AuctionServer or other
-     * Peers.
-     */
     private class PeerConnectionHandler implements Runnable {
         private final Socket socket;
 
@@ -82,14 +79,13 @@ public class PeerServer extends Thread {
         @Override
         public void run() {
             try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
-                    ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+                 ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
 
                 Message request = (Message) in.readObject();
-                if (request == null)
+                if (request == null || request.getType() == null)
                     return;
 
                 switch (request.getType()) {
-
 
                     case TRANSACTION:
                         System.out.println("[PeerServer]> Received TRANSACTION request from a buyer.");
@@ -120,43 +116,20 @@ public class PeerServer extends Thread {
                         break;
 
                     case AUCTION_RESULT:
-                        String status = request.getString("status");
-                        String msg = request.getString("message");
-                        System.out.println("\n[URGENT NOTIFICATION]> " + status + ": " + msg);
+                        handleAuctionResult(request);
+                        break;
 
-                        String objectId   = request.getString("object_id");
-                        String objectDesc = request.getString("object_description");
-                        double finalPrice = Double.parseDouble(request.getString("final_price"));
-                        int    timestamp = Integer.parseInt(request.getString("timestamp"));
-
-                        switch (status) {
-                            case "WON":
-                                objectId   = request.getString("object_id");
-                                objectDesc = request.getString("object_description");
-                                finalPrice = Double.parseDouble(request.getString("final_price"));
-                                String sellerTransIp = request.getString("seller_trans_ip");
-                                int sellerTransPort = Integer.parseInt(request.getString("seller_trans_port"));
-
-                                new Thread(new TransactionHandler(sellerTransIp, sellerTransPort, objectId, finalPrice, directoryPath,PeerApp.getAuctionClient())).start();
-                                break;
-
-                            case "SOLD":
-                                objectId   = request.getString("object_id");
-                                objectDesc = request.getString("object_description");
-                                finalPrice = Double.parseDouble(request.getString("final_price"));
-                                String buyerUsername = request.getString("buyer_username");
-                                int    buyerToken   = Integer.parseInt(request.getString("buyer_token"));
-                                break;
-
-
-
-                        }
+                    case CHECK_ACTIVE:
+                        // The server is just pinging to see if the socket is open
                         break;
 
                     default:
                         System.out.println("[PeerServer]> Ignored unknown message type: " + request.getType());
+                        break;
                 }
 
+            } catch (java.io.EOFException e) {
+                // Client closed the connection normally
             } catch (Exception e) {
                 System.err.println("[PeerServer]> Connection error: " + e.getMessage());
             } finally {
@@ -166,6 +139,63 @@ public class PeerServer extends Thread {
                 }
             }
         }
-    }
 
+        private void handleAuctionResult(Message request) {
+            String status = request.getString("status");
+            String msg = request.getString("message");
+            System.out.println("\n[URGENT NOTIFICATION]> " + status + ": " + msg);
+
+            if (status == null) {
+                System.err.println("[PeerServer]> AUCTION_RESULT received with no status field.");
+                return;
+            }
+
+            switch (status) {
+                case "WON":
+                    String objectId   = request.getString("object_id");
+                    String objectDesc = request.getString("object_description");
+                    double finalPrice = Double.parseDouble(request.get("final_price").toString());
+                    String sellerIp   = request.getString("p2pIpAddress");
+                    int sellerPort    = (Integer) request.get("p2pPort");
+
+                    System.out.println("[PeerServer]> You won item: " + objectId + " (" + objectDesc + ")");
+                    System.out.println("[PeerServer]> Final price: " + finalPrice);
+                    new Thread(new TransactionHandler(
+                            sellerIp, sellerPort, objectId, finalPrice,
+                            directoryPath, PeerApp.getAuctionClient()
+                    )).start();
+                    break;
+
+                case "SOLD":
+                    String soldObjectId    = request.getString("object_id");
+                    double soldFinalPrice  = Double.parseDouble(request.get("final_price").toString());
+                    String buyerUsername   = request.getString("buyer_username");
+                    String buyerToken      = request.getString("buyer_token");
+
+                    System.out.println("[PeerServer]> Your item " + soldObjectId + " was sold for "
+                            + soldFinalPrice + " to user " + buyerUsername + " (token: " + buyerToken + ")");
+                    break;
+
+                case "NO_BIDS":
+                    String noBidsObjectId = request.getString("object_id");
+                    System.out.println("[PeerServer]> Auction for item " + noBidsObjectId
+                            + " ended with no bids. Item was not sold.");
+                    break;
+
+                case "AUCTION_CANCELLED":
+                    System.out.println("[PeerServer]> The auction was cancelled because the seller disconnected.");
+                    break;
+
+                case "NEW_HIGHEST_BID":
+                    String bidObjectId = request.getString("object_id");
+                    Object newBid = request.get("current_bid");
+                    System.out.println("[PeerServer]> New highest bid on item " + bidObjectId + ": " + newBid);
+                    break;
+
+                default:
+                    System.out.println("[PeerServer]> Unhandled AUCTION_RESULT status: " + status);
+                    break;
+            }
+        }
+    }
 }

@@ -2,26 +2,17 @@ package peer;
 
 import models.Message;
 import models.Message.MessageType;
-import peer.PeerServer;
-
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 
 public class PeerApp {
     private static String tokenID = null;
-    // private static String myIpAddr = null;
-    // private static int myPort = 0;
-
-
-    // UI to Initialize them
     private static String username = "";
     private static String password = "";
-
     private static String sharedDirPath;
-
     private static PeerServer myPeerServer = null;
     private static AuctionClient myAuctionClient = null;
-    public static  AuctionClient getAuctionClient() {return myAuctionClient;}
+    public static AuctionClient getAuctionClient() {
+        return myAuctionClient;
+    }
     private static ItemGenerator generator = null;
 
     public static void main(String[] args) {
@@ -40,7 +31,7 @@ public class PeerApp {
         password = generateRandom("pass");
 
         /*
-         * while (myPeerServer.getListeningPort() == 0) {} // busy wait until port is
+         * while (myPeerServer.getListeningPort() == 0) {}
          * assigned
          * 
          * myPort = myPeerServer.getListeningPort();
@@ -58,13 +49,14 @@ public class PeerApp {
         System.setOut(new CustomPrintStream(System.out, username));
 
         myAuctionClient.setTokenID(tokenID);
+        myAuctionClient.setUsername(username);
         startGenerator();
 
         myAuctionClient.startPolling();
 
         try {
-            System.out.println("[PeerApp]> App is running. In 5 minutes it will logout and stop");
-            Thread.sleep(3000000);
+            System.out.println("[PeerApp]> App is running. It will logout and stop in 5 minutes.");
+            Thread.sleep(300000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -74,12 +66,11 @@ public class PeerApp {
     }
 
     private static Boolean register(String username, String password) {
-        Message reqLogIn = new Message(MessageType.REGISTER);
-        reqLogIn.put("username", username);
-        reqLogIn.put("password", password);
+        Message reqRegister = new Message(MessageType.REGISTER);
+        reqRegister.put("username", username);
+        reqRegister.put("password", password);
 
-        myAuctionClient.sendMessage(reqLogIn);
-        Message response = myAuctionClient.receiveMessage();
+        Message response = myAuctionClient.sendAndReceive(reqRegister);
 
         if (response == null) {
             System.err.println("[PeerApp]> No response from server.");
@@ -105,8 +96,7 @@ public class PeerApp {
         reqLogIn.put("p2pIpAddress", myIp);
         reqLogIn.put("p2pPort", myPort);
 
-        myAuctionClient.sendMessage(reqLogIn);
-        Message response = myAuctionClient.receiveMessage();
+        Message response = myAuctionClient.sendAndReceive(reqLogIn);
 
         if (response == null) {
             System.err.println("[PeerApp]> No response from server.");
@@ -125,8 +115,7 @@ public class PeerApp {
         Message reqLogOut = new Message(MessageType.LOGOUT);
         reqLogOut.put("token", tokenID);
 
-        myAuctionClient.sendMessage(reqLogOut);
-        Message resp = myAuctionClient.receiveMessage();
+        Message resp = myAuctionClient.sendAndReceive(reqLogOut);
         System.out.println("[PeerApp]> Sent Logout to Server: " + resp.getString("message"));
         System.out.println("[PeerApp]> Logging Out");
 
@@ -153,17 +142,7 @@ public class PeerApp {
         return prefix + "_" + java.util.UUID.randomUUID().toString().substring(0, 8);
     }
 
-
     private static String getMyIpAddress() {
-        //try {
-            return "127.0.0.1";
-
-            //return InetAddress.getLocalHost().getHostAddress();
-//        } catch (UnknownHostException e) {
-//            System.err.println("[PeerApp]> Could not determine IP address: " +
-//            e.getMessage());
-//            return "127.0.0.1";
-//        }
+        return "127.0.0.1";
     }
-
 }

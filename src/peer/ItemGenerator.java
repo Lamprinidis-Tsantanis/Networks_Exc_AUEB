@@ -2,7 +2,6 @@ package peer;
 
 import models.Item;
 import models.Message;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
