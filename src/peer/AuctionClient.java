@@ -12,7 +12,8 @@ import java.net.UnknownHostException;
  * AuctionClient handles all outgoing communication from the Peer to the central
  * AuctionServer.
  * It establishes a persistent connection, manages serialization streams,
- * and automatically injects the session token into every request once logged in.
+ * and automatically injects the session token into every request once logged
+ * in.
  */
 public class AuctionClient {
 
@@ -26,10 +27,8 @@ public class AuctionClient {
     private Thread pollingThread;
     private String directoryPath;
 
-    private final java.util.concurrent.LinkedBlockingQueue<Message> responseBuffer =
-            new java.util.concurrent.LinkedBlockingQueue<>();
-    private final java.util.concurrent.LinkedBlockingQueue<Message> notificationBuffer =
-            new java.util.concurrent.LinkedBlockingQueue<>();
+    private final java.util.concurrent.LinkedBlockingQueue<Message> responseBuffer = new java.util.concurrent.LinkedBlockingQueue<>();
+    private final java.util.concurrent.LinkedBlockingQueue<Message> notificationBuffer = new java.util.concurrent.LinkedBlockingQueue<>();
     private Thread responseReaderThread;
     private Thread notificationDispatchThread;
 
@@ -40,9 +39,11 @@ public class AuctionClient {
     }
 
     /**
-     * Connects to the AuctionServer using the IP and Port defined in Constants.java.
+     * Connects to the AuctionServer using the IP and Port defined in
+     * Constants.java.
      * Initializes the output and input streams for object serialization.
-     * Starts a background reader thread and a dedicated notification dispatcher thread.
+     * Starts a background reader thread and a dedicated notification dispatcher
+     * thread.
      *
      * @return {@code true} if connection was successful, {@code false} otherwise.
      */
@@ -58,7 +59,8 @@ public class AuctionClient {
                 while (true) {
                     try {
                         Message msg = (Message) reader.readObject();
-                        if (msg == null) continue;
+                        if (msg == null)
+                            continue;
 
                         if (msg.getType() == Message.MessageType.AUCTION_RESULT
                                 || msg.getType() == Message.MessageType.CHECK_ACTIVE) {
@@ -106,8 +108,10 @@ public class AuctionClient {
     }
 
     /**
-     * Handles asynchronous notifications pushed by the server (AUCTION_RESULT, CHECK_ACTIVE).
-     * Runs exclusively on the notificationDispatchThread so it never races with sendAndReceive().
+     * Handles asynchronous notifications pushed by the server (AUCTION_RESULT,
+     * CHECK_ACTIVE).
+     * Runs exclusively on the notificationDispatchThread so it never races with
+     * sendAndReceive().
      */
     private void handleNotification(Message msg) {
         if (msg.getType() == Message.MessageType.CHECK_ACTIVE) {
@@ -115,16 +119,17 @@ public class AuctionClient {
         }
 
         String status = msg.getString("status");
-        if (status == null) return;
+        if (status == null)
+            return;
 
         System.out.println("[AuctionClient]> NOTIFICATION [" + status + "]: " + msg.getString("message"));
 
         switch (status) {
             case "WON":
-                String sellerIp   = msg.getString("p2pIpAddress");
-                int sellerPort    = (Integer) msg.get("p2pPort");
-                String objId      = msg.getString("object_id");
-                double price      = Double.parseDouble(msg.get("final_price").toString());
+                String sellerIp = msg.getString("p2pIpAddress");
+                int sellerPort = (Integer) msg.get("p2pPort");
+                String objId = msg.getString("object_id");
+                double price = Double.parseDouble(msg.get("final_price").toString());
                 System.out.println("[AuctionClient]> You WON " + objId + "! Launching Transaction...");
                 new Thread(new TransactionHandler(sellerIp, sellerPort, objId, price, directoryPath, this)).start();
                 break;
@@ -179,7 +184,8 @@ public class AuctionClient {
     /**
      * Blocks and waits to receive a Message object from the server.
      *
-     * @return The received Message object, or {@code null} if the connection dropped.
+     * @return The received Message object, or {@code null} if the connection
+     *         dropped.
      */
     public Message receiveMessage() {
         try {
@@ -286,7 +292,8 @@ public class AuctionClient {
         }
 
         if (randInterest < 0.6) {
-            System.out.println("[Poller]> 60% Check Passed! I am interested in item " + objId + ". Fetching details...");
+            System.out
+                    .println("[Poller]> 60% Check Passed! I am interested in item " + objId + ". Fetching details...");
 
             Message reqDetails = new Message(Message.MessageType.GET_AUCTION_DETAILS);
             reqDetails.put("object_id", objId);
@@ -295,7 +302,11 @@ public class AuctionClient {
             if (response != null && response.getType() == Message.MessageType.SUCCESS) {
                 String sellerToken = response.getString("seller_token");
                 Object highestBid = response.get("highest_bid");
-                Object timeRemaining = response.get("remaining_time");
+                Object timeRemainingObj = response.get("remaining_time");
+                Object totalDurationObj = response.get("total_duration");
+
+                long timeRemaining = ((Number) timeRemainingObj).longValue();
+                long totalDuration = ((Number) totalDurationObj).longValue();
 
                 System.out.println("   --- AUCTION DETAILS ---");
                 System.out.println("   -> Seller Token: " + sellerToken);
@@ -305,7 +316,20 @@ public class AuctionClient {
 
                 try {
                     double currentHighest = ((Number) highestBid).doubleValue();
-                    double newBid = currentHighest * (1 + (Math.random() / 10));
+                    double newBid;
+
+                    /*
+                     * FOR PHASE 2
+                     * Check the remaining_time to fing out if it is 10%
+                     * and increase the value to max 20%
+                     */
+                    if (timeRemaining <= (0.10 * totalDuration)) {
+                        newBid = currentHighest * (1 + (Math.random() * 0.20));
+                        System.out.println("[Poller]> Final 10% of auction reached! Aggressive bidding activated.");
+                    } else {
+                        newBid = currentHighest * (1 + (Math.random() * 0.10));
+                    }
+
                     newBid = Math.round(newBid * 100.0) / 100.0;
 
                     Message placeBid = new Message(Message.MessageType.PLACE_BID);
@@ -334,7 +358,8 @@ public class AuctionClient {
     }
 
     /**
-     * Safely closes the socket and streams when shutting down the client application.
+     * Safely closes the socket and streams when shutting down the client
+     * application.
      */
     public void disconnect() {
         isDisconnecting = true;

@@ -126,7 +126,7 @@ public class ClientHandler implements Runnable {
         if (username == null || password == null) {
             return error("Missing username or password.");
         }
-        
+
         username = username.toLowerCase();
 
         boolean ok = accountManager.register(username, password);
@@ -149,13 +149,14 @@ public class ClientHandler implements Runnable {
         } else if (portObj instanceof String) {
             try {
                 p2pPort = Integer.parseInt((String) portObj);
-            } catch (NumberFormatException ignored) {}
+            } catch (NumberFormatException ignored) {
+            }
         }
 
         if (username == null || password == null || p2pIpAddress == null || p2pPort == null) {
             return error("Missing username, password, or peer listening info."); // <--- UPDATED
         }
-        
+
         username = username.toLowerCase();
 
         String token = accountManager.login(username, password, clientAddress, clientPort, p2pIpAddress, p2pPort);
@@ -231,6 +232,7 @@ public class ClientHandler implements Runnable {
         resp.put("seller_token", details[0]);
         resp.put("highest_bid", details[1]);
         resp.put("remaining_time", details[2]);
+        resp.put("total_duration", details[3]);
         return resp;
     }
 

@@ -49,7 +49,8 @@ public class AuctionManager {
             String sellerToken = nextAuctionEntry.sellerTokenId;
 
             if (!dataStore.isSessionActive(sellerToken)) {
-                System.out.println("[AuctionManager]> Skipping item " + nextItem.getObjectId() + " because seller disconnected.");
+                System.out.println(
+                        "[AuctionManager]> Skipping item " + nextItem.getObjectId() + " because seller disconnected.");
                 continue;
             }
 
@@ -97,7 +98,8 @@ public class AuctionManager {
      * Also triggers a seller liveness check before returning data.
      *
      * @return {@code Object[]} with sellerTokenId at [0], highestBid at [1],
-     *         and remainingTime in seconds at [2], or {@code null} if no auction is active.
+     *         and remainingTime in seconds at [2], or {@code null} if no auction is
+     *         active.
      */
     public Object[] sendAuctionDetails() {
         AuctionManagerThread activeThread = currentAuctionThread;
@@ -109,7 +111,8 @@ public class AuctionManager {
                 String sellerToken = activeThread.getSellerToken();
                 double highestBid = activeThread.getHighestBid();
                 long remainingTime = activeThread.getAuctionTimeLeft();
-                return new Object[] { sellerToken, highestBid, remainingTime };
+                long totalDuration = activeThread.getAuctioningItem().getAuctionDuration();
+                return new Object[] { sellerToken, highestBid, remainingTime, totalDuration };
             }
         }
         return null;
@@ -193,7 +196,8 @@ public class AuctionManager {
                     out.writeObject(msg);
                     out.flush();
                 } catch (java.io.IOException e) {
-                    System.err.println("[AuctionManager]> Failed to notify bidder " + bidderToken + " of cancellation.");
+                    System.err
+                            .println("[AuctionManager]> Failed to notify bidder " + bidderToken + " of cancellation.");
                 }
             }
         }
