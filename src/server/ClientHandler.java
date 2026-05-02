@@ -6,6 +6,10 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Handles one peer connection on its own thread.
@@ -105,7 +109,7 @@ public class ClientHandler implements Runnable {
 
             // -- Auction management --
             case REQUEST_AUCTION -> handleRequestAuction(request);
-            case GET_CURRENT_AUCTION -> handleGetCurrentAuction(request);
+            case GET_CURRENT_AUCTION -> handleGetCurrentAuctions(request);
             case GET_AUCTION_DETAILS -> handleGetAuctionDetails(request);
             case PLACE_BID -> handlePlaceBid(request);
             case CONFIRM_OWNERSHIP -> handleOwnership(request);
@@ -212,28 +216,42 @@ public class ClientHandler implements Runnable {
         return error("Failed to add items to queue. Invalid token or empty list.");
     }
 
-    private Message handleGetCurrentAuction(Message req) {
-        String[] current = auctionManager.sendCurrentAuction();
-        if (current == null)
-            return error("No active auction.");
-
-        Message resp = success("Current auction retrieved.");
-        resp.put("object_id", current[0]);
-        resp.put("description", current[1]);
+    private Message handleGetCurrentAuctions(Message req) {
+        List<String[]> auctions = auctionManager.getAllCurrentAuctions();
+        if (auctions.isEmpty()) {
+            return error("No active auctions.");
+        }
+        Message resp = success("Current auctions retrieved.");
+        // Create a list of auction objects
+        List<Map<String, String>> auctionList = new ArrayList<>();
+        for (String[] auction : auctions) {
+            Map<String, String> auctionMap = new HashMap<>();
+            auctionMap.put("object_id", auction[0]);
+            auctionMap.put("description", auction[1]);
+            auctionList.add(auctionMap);
+        }
+        resp.put("auctions", auctionList);
         return resp;
     }
 
     private Message handleGetAuctionDetails(Message req) {
-        Object[] details = auctionManager.sendAuctionDetails();
-        if (details == null)
-            return error("No active auction.");
+        String objectId = req.getString("object_id");
 
-        Message resp = success("Auction details retrieved.");
-        resp.put("seller_token", details[0]);
-        resp.put("highest_bid", details[1]);
-        resp.put("remaining_time", details[2]);
-        resp.put("total_duration", details[3]);
-        return resp;
+        List<Object[]> auctionList = auctionManager.getAllAuctionDetails();
+        if (auctionList == null)
+            return error("No active auction.");
+        for (Object[] details : auctionList) {
+            if (details[4].equals(objectId)) {
+                Message resp = success("Auction details retrieved.");
+                resp.put("seller_token", details[0]);
+                resp.put("highest_bid", details[1]);
+                resp.put("remaining_time", details[2]);
+                resp.put("total_duration", details[3]);
+                resp.put("object_id", details[4]);
+                return resp;
+            }
+        }
+        return error("No active auction found for item: " + objectId);
     }
 
     private Message handlePlaceBid(Message req) {

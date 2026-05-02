@@ -24,6 +24,7 @@ public class AuctionManagerThread extends Thread {
     private volatile long auctionTimeLeft; // in seconds
     private volatile boolean active;
     private volatile boolean cancelled = false;
+    private String tag;
 
     public AuctionManagerThread(AuctionManager auctionManager, DataStore dataStore, Item item, String sellerToken) {
         this.auctionManager = auctionManager;
@@ -35,6 +36,7 @@ public class AuctionManagerThread extends Thread {
         this.highestBid = item.getStartBid();
         this.highestBidderToken = null;
         this.sellerToken = sellerToken;
+        this.tag = "[Auction:" + item.getObjectId() + "]";
     }
 
     // ----------------------------------------------------------------
@@ -76,25 +78,24 @@ public class AuctionManagerThread extends Thread {
     }
 
     public void startAuction() {
-        System.out.println("\n[AuctionManagerThread]> Starting auction for item: " + auctioningItem.getObjectId()
+        System.out.println("\n" + tag + " Starting auction for item: " + auctioningItem.getObjectId()
                 + " | Duration: " + auctioningItem.getAuctionDuration() + "s");
         start();
     }
 
     @Override
     public void run() {
-        System.out.println("[AuctionManagerThread]> Started an auction");
+        System.out.println(tag + " Started an auction");
         while (auctionTimeLeft > 0 && active) {
             try {
                 Thread.sleep(1000);
                 auctionTimeLeft--;
                 if (auctionTimeLeft % 10 == 0 && auctionTimeLeft > 0) {
-                    System.out.println("[AuctionManagerThread]> " + auctionTimeLeft + " seconds left for: "
+                    System.out.println(tag + " " + auctionTimeLeft + " seconds left for: "
                             + auctioningItem.getObjectId());
                 }
             } catch (InterruptedException e) {
-                System.err.println(
-                        "[AuctionManagerThread]> Auction interrupted: " + auctioningItem.getObjectId());
+                System.err.println(tag + " Auction interrupted: " + auctioningItem.getObjectId());
                 active = false;
             }
         }
@@ -103,13 +104,13 @@ public class AuctionManagerThread extends Thread {
 
     public void finalizeAuction() {
         if (cancelled) {
-            System.out.println("\n[AuctionManagerThread]> === AUCTION CANCELLED ===");
+            System.out.println("\n" + tag + " === AUCTION CANCELLED ===");
             return;
         }
 
         bidLock.lock();
         try {
-            System.out.println("\n[AuctionManagerThread]> === AUCTION COMPLETE ===");
+            System.out.println("\n" + tag + " === AUCTION COMPLETE ===");
 
             boolean success = false;
 
@@ -119,9 +120,9 @@ public class AuctionManagerThread extends Thread {
                 DataStore.SessionRecord sellerSession = dataStore.getSession(sellerToken);
 
                 if (sellerSession == null) {
-                    System.out.println("[AuctionManagerThread]> Seller disconnected before auction ended.");
+                    System.out.println(tag + " Seller disconnected before auction ended.");
                 } else if (winnerUsername == null) {
-                    System.out.println("[AuctionManagerThread]> Winner disconnected before auction ended.");
+                    System.out.println(tag + " Winner disconnected before auction ended.");
                 } else {
                     String sellerUsername = sellerSession.username;
                     String sellerp2pIp = sellerSession.p2pIpAddress;
@@ -134,7 +135,7 @@ public class AuctionManagerThread extends Thread {
                     dataStore.addSellerCount(sellerUsername);
                     dataStore.addBidderCount(winnerUsername);
 
-                    System.out.println("[AuctionManagerThread]> Sold to: " + winnerUsername
+                    System.out.println(tag + " Sold to: " + winnerUsername
                             + " | Final price: " + highestBid);
                     success = true;
                 }
@@ -143,8 +144,8 @@ public class AuctionManagerThread extends Thread {
             if (!success) {
                 // AUCTION FAILED
                 notifier.notifySellerNoBids(sellerToken, auctioningItem);
-                System.out.println("[AuctionManagerThread]> AUCTION FAILED - No bids placed or participants disconnected.");
-                
+                System.out.println(tag + " AUCTION FAILED - No bids placed or participants disconnected.");
+
                 if (highestBidderToken != null && dataStore.getSession(sellerToken) == null) {
                     auctionManager.notifyBiddersAuctionCancelled(activeBidders);
                 }
@@ -181,7 +182,7 @@ public class AuctionManagerThread extends Thread {
             activeBidders.add(tokenId);
 
             String bidderUsername = dataStore.getUsernameByToken(tokenId);
-            System.out.println("[AuctionManagerThread]> New bid placed: " + bidAmount
+            System.out.println(tag + " New bid placed: " + bidAmount
                     + " by: " + bidderUsername);
         } finally {
             bidLock.unlock();

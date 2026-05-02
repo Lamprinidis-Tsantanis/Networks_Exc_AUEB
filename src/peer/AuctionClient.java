@@ -7,6 +7,8 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.List;
+import java.util.Map;
 
 /**
  * AuctionClient handles all outgoing communication from the Peer to the central
@@ -252,11 +254,27 @@ public class AuctionClient {
                     Message response = sendAndReceive(req);
 
                     if (response != null && response.getType() == Message.MessageType.SUCCESS) {
-                        String objId = response.getString("object_id");
-                        String desc = response.getString("description");
-                        System.out.println("[Poller]> Currently Auctioning: " + desc + " (ID: " + objId + ")");
+                        Object auctionsObj = response.get("auctions");
 
-                        evaluateInterest(objId);
+                        if (auctionsObj instanceof List) {
+                            List<?> auctions = (List<?>) auctionsObj;
+
+                            if (auctions.isEmpty()) {
+                                System.out.println("[Poller]> No active auctions.");
+                            } else {
+                                System.out.println("[Poller]> Current auctions (" + auctions.size() + " active):");
+                                for (Object auctionObj : auctions) {
+                                    if (auctionObj instanceof Map) {
+                                        @SuppressWarnings("unchecked")
+                                        Map<String, String> auctionMap = (Map<String, String>) auctionObj;
+                                        String objId = auctionMap.get("object_id");
+                                        String desc = auctionMap.get("description");
+                                        System.out.println("  - " + desc + " (ID: " + objId + ")");
+                                        evaluateInterest(objId);
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Thread.sleep(60000);
