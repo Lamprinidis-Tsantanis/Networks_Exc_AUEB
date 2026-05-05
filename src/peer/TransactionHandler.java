@@ -11,24 +11,24 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class TransactionHandler implements Runnable {
-    private String objectId ;
-    private double finalPrice ;
+    private String objectId;
+    private double finalPrice;
     private String sellerTransIp;
     private int sellerTransPort;
-    private  String sharedDir;
+    private String sharedDir;
     private AuctionClient auctionClient;
 
     private static int CONNECTION_TIMEOUT = 5000;
 
-    public TransactionHandler(String sellerIp, int sellerPort, String objectId, double winningBid, String sharedDirectory, AuctionClient auctionClient) {
-        this.sellerTransIp        = sellerIp;
-        this.sellerTransPort      = sellerPort;
-        this.objectId        = objectId;
-        this.finalPrice      = winningBid;
+    public TransactionHandler(String sellerIp, int sellerPort, String objectId, double winningBid,
+            String sharedDirectory, AuctionClient auctionClient) {
+        this.sellerTransIp = sellerIp;
+        this.sellerTransPort = sellerPort;
+        this.objectId = objectId;
+        this.finalPrice = winningBid;
         this.sharedDir = sharedDirectory;
-        this.auctionClient   = auctionClient;
+        this.auctionClient = auctionClient;
     }
-
 
     @Override
     public void run() {
@@ -38,16 +38,10 @@ public class TransactionHandler implements Runnable {
             byte[] fileBytes = fetchFileFromServer();
             saveFileToDisk(fileBytes);
             notifyServerOfOwnership();
-        } catch (TransactionException e){
+        } catch (TransactionException e) {
             System.err.println("[TransactionHandler]> Transaction failed: " + e.getMessage());
         }
-
-
     }
-
-
-
-
 
     private byte[] fetchFileFromServer() throws TransactionException {
         try (Socket socket = new Socket()) {
@@ -58,7 +52,7 @@ public class TransactionHandler implements Runnable {
             ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
 
             Message confirm = new Message(Message.MessageType.TRANSACTION);
-            confirm.put("object_id",   objectId);
+            confirm.put("object_id", objectId);
             confirm.put("winning_bid", String.valueOf(finalPrice));
             out.writeObject(confirm);
             out.flush();
@@ -81,15 +75,17 @@ public class TransactionHandler implements Runnable {
             throw new TransactionException("Seller returned non-successful response.");
 
         } catch (java.net.SocketTimeoutException e) {
-            throw new TransactionException("Timed out connecting to seller at " + sellerTransIp + ":" + sellerTransPort);
+            throw new TransactionException(
+                    "Timed out connecting to seller at " + sellerTransIp + ":" + sellerTransPort);
         } catch (IOException e) {
             throw new TransactionException("I/O error during seller connection: " + e.getMessage());
         } catch (ClassNotFoundException e) {
             throw new TransactionException("Received an unrecognised object from seller: " + e.getMessage());
         }
     }
+
     private void saveFileToDisk(byte[] fileBytes) throws TransactionException {
-        try{
+        try {
             Path dirPath = Paths.get(sharedDir);
             if (!Files.exists(dirPath)) {
                 Files.createDirectories(dirPath);
@@ -97,13 +93,14 @@ public class TransactionHandler implements Runnable {
             Path filePath = dirPath.resolve(objectId + ".txt");
             Files.write(filePath, fileBytes);
             System.out.println("[TransactionHandler]> File saved to: " + filePath.toAbsolutePath());
-        }catch (IOException e) {
+        } catch (IOException e) {
             throw new TransactionException("Failed to save file: " + e.getMessage());
         }
     }
+
     private void notifyServerOfOwnership() throws TransactionException {
         Message notify = new Message(MessageType.CONFIRM_OWNERSHIP);
-        notify.put("object_id",   objectId);
+        notify.put("object_id", objectId);
         notify.put("winning_bid", String.valueOf(finalPrice));
 
         Message response = auctionClient.sendAndReceive(notify);
@@ -121,7 +118,6 @@ public class TransactionHandler implements Runnable {
         }
 
         System.out.println("[TransactionHandler]> AuctionServer confirmed new ownership of: " + objectId);
-
     }
 
     public static class TransactionException extends Exception {

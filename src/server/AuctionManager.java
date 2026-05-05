@@ -45,12 +45,13 @@ public class AuctionManager {
      * Blocks on dequeueItem() when the queue is empty, and waits for the
      * auction thread to finish before starting the next one.
      */
+    // TODO one at a time ?
     public void startAuction() throws InterruptedException {
         while (true) {
             activeAuctions.removeIf(thread -> !thread.isActive());
 
             while (activeAuctions.size() >= MAX_CONCURRENT_AUCTIONS) {
-                Thread.sleep(1000);  // Wait 1 second
+                Thread.sleep(1000);
                 activeAuctions.removeIf(thread -> !thread.isActive());
             }
 
@@ -84,7 +85,8 @@ public class AuctionManager {
      * Retrieves the object ID and description of the currently active auctions.
      * Also triggers a seller liveness check before returning data.
      *
-     * @return {@code List <String[]>} where for each item, objectId at [0] and description at [1],
+     * @return {@code List <String[]>} where for each item, objectId at [0] and
+     *         description at [1],
      *         or {@code empty List} if no auction is active.
      */
     public List<String[]> getAllCurrentAuctions() {
@@ -106,7 +108,8 @@ public class AuctionManager {
      * Retrieves details of the currently active auction.
      * Also triggers a seller liveness check before returning data.
      *
-     * @return {@code List<Object[]>} where each List item has sellerTokenId at [0], highestBid at [1],
+     * @return {@code List<Object[]>} where each List item has sellerTokenId at [0],
+     *         highestBid at [1],
      *         remainingTime in seconds at [2], startingTime of the auction [3]
      *         and the objectID at [4]
      *         or {@code null} if no auction is
@@ -125,7 +128,8 @@ public class AuctionManager {
                         auction.getHighestBid(),
                         auction.getAuctionTimeLeft(),
                         auction.getAuctioningItem().getAuctionDuration(),
-                        auction.getAuctioningItem().getObjectId()
+                        auction.getAuctioningItem().getObjectId(),
+                        dataStore.getReputation(dataStore.getUsernameByToken(auction.getSellerToken()))
                 });
             }
         }
@@ -145,7 +149,8 @@ public class AuctionManager {
 
         if (sellerSession == null) {
             // Seller logged out - cancel ALL their auctions
-            System.out.println("[AuctionManager]> Seller " + sellerTokenId + " logged out. Cancelling all their auctions.");
+            System.out.println(
+                    "[AuctionManager]> Seller " + sellerTokenId + " logged out. Cancelling all their auctions.");
 
             synchronized (this) {
                 List<AuctionManagerThread> sellerAuctions = getSellerAuctions(sellerTokenId);
@@ -166,7 +171,9 @@ public class AuctionManager {
                 out.writeObject(msg);
                 out.flush();
             }
-        } catch (java.io.IOException e) {isAlive = false;}
+        } catch (java.io.IOException e) {
+            isAlive = false;
+        }
         if (!isAlive) {
             System.out.println("[AuctionManager]> Seller " + sellerTokenId + " disconnected. Cleaning up.");
             dataStore.removeSession(sellerTokenId);

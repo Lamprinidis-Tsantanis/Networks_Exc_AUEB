@@ -21,7 +21,7 @@ public class AuctionManagerThread extends Thread {
     private String highestBidderToken;
     private final ReentrantLock bidLock = new ReentrantLock();
     // timer
-    private volatile long auctionTimeLeft; // in seconds
+    private volatile long auctionTimeLeft;
     private volatile boolean active;
     private volatile boolean cancelled = false;
     private String tag;
@@ -128,9 +128,11 @@ public class AuctionManagerThread extends Thread {
                     String sellerp2pIp = sellerSession.p2pIpAddress;
                     Integer sellerp2pPort = sellerSession.p2pPort;
 
-                    notifier.notifyAuctionWon(highestBidderToken, auctioningItem, highestBid, sellerUsername, sellerp2pIp,
+                    notifier.notifyAuctionWon(highestBidderToken, auctioningItem, highestBid, sellerUsername,
+                            sellerp2pIp,
                             sellerp2pPort);
-                    notifier.notifySellerSold(sellerToken, auctioningItem, highestBid, winnerUsername, highestBidderToken);
+                    notifier.notifySellerSold(sellerToken, auctioningItem, highestBid, winnerUsername,
+                            highestBidderToken);
 
                     dataStore.addSellerCount(sellerUsername);
                     dataStore.addBidderCount(winnerUsername);

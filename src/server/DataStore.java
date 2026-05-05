@@ -23,7 +23,8 @@ public class DataStore {
     // ---------------------------------------------------------
     private static DataStore singletonInstance = null;
 
-    private DataStore() {}
+    private DataStore() {
+    }
 
     public synchronized static DataStore getInstance() {
         if (singletonInstance == null) {
@@ -39,11 +40,13 @@ public class DataStore {
         public String password;
         public int numAuctionsSeller;
         public int numAuctionsBidder;
+        public double reputation_score;
 
         public UserRecord(String password) {
             this.password = password;
             this.numAuctionsSeller = 0;
             this.numAuctionsBidder = 0;
+            this.reputation_score = 1.0;
         }
     }
 
@@ -59,17 +62,17 @@ public class DataStore {
          * the token id is not registered in here because it is the key of the hashmap
          * {@code activeSessions}
          * 
-         * @param username      username of user
-         * @param ipAddress     ipAddress of user
-         * @param port          port where user transmits
-         * @param p2pIpAddress  ipAddress where user waits for buyer
-         * @param p2pPort       port where user waits for buyer
+         * @param username     username of user
+         * @param ipAddress    ipAddress of user
+         * @param port         port where user transmits
+         * @param p2pIpAddress ipAddress where user waits for buyer
+         * @param p2pPort      port where user waits for buyer
          */
         public SessionRecord(String username, String ipAddress, int port, String p2pIpAddress, int p2pPort) {
             this.username = username;
             this.ipAddress = ipAddress;
             this.port = port;
-            this.p2pIpAddress=p2pIpAddress;
+            this.p2pIpAddress = p2pIpAddress;
             this.p2pPort = p2pPort;
         }
     }
@@ -77,6 +80,7 @@ public class DataStore {
     public static class AuctionEntry {
         public Item auctionItem;
         public String sellerTokenId;
+
         public AuctionEntry(Item auctionItem, String sellerTokenId) {
             this.auctionItem = auctionItem;
             this.sellerTokenId = sellerTokenId;
@@ -127,12 +131,28 @@ public class DataStore {
         }
     }
 
+    public double getReputation(String username) {
+        UserRecord record = registeredUsers.get(username);
+        return record.reputation_score;
+    }
+
+    public void updateReputation(String username, boolean isSuccessfull) {
+        UserRecord record = registeredUsers.get(username);
+        if (isSuccessfull) {
+            record.reputation_score = (1 - 0.25) * getReputation(username) + 0.25;
+        } else {
+            record.reputation_score = (1 - 0.25) * getReputation(username);
+        }
+    }
+
     // ----------------------------------------------------------
     // SESSION METHODS
     // ----------------------------------------------------------
     /** Creates a new session, returns false if the session already exists */
-    public boolean addSession(String tokenId, String username, String ipAddress, int port, String p2pIpAddress, int p2pPort) {
-        if (activeSessions.putIfAbsent(tokenId, new SessionRecord(username, ipAddress, port, p2pIpAddress, p2pPort)) == null) {
+    public boolean addSession(String tokenId, String username, String ipAddress, int port, String p2pIpAddress,
+            int p2pPort) {
+        if (activeSessions.putIfAbsent(tokenId,
+                new SessionRecord(username, ipAddress, port, p2pIpAddress, p2pPort)) == null) {
             System.out.println("[DataStore]> Session " + username + " has been registered successfully.");
             return true;
         }
@@ -156,7 +176,6 @@ public class DataStore {
     public SessionRecord getSession(String tokenId) {
         return activeSessions.get(tokenId);
     }
-
 
     /** Returns username based on tokenId */
     public String getUsernameByToken(String tokenId) {

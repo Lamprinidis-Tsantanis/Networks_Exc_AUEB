@@ -10,9 +10,11 @@ public class PeerApp {
     private static String sharedDirPath;
     private static PeerServer myPeerServer = null;
     private static AuctionClient myAuctionClient = null;
+
     public static AuctionClient getAuctionClient() {
         return myAuctionClient;
     }
+
     private static ItemGenerator generator = null;
 
     public static void main(String[] args) {
@@ -29,14 +31,6 @@ public class PeerApp {
         // initialize random username and password
         username = generateRandom("user");
         password = generateRandom("pass");
-
-        /*
-         * while (myPeerServer.getListeningPort() == 0) {}
-         * assigned
-         * 
-         * myPort = myPeerServer.getListeningPort();
-         * myIpAddr = getMyIpAddress();
-         */
 
         while (!register(username, password)) {
             // if someone already uses them, generate new credentials
@@ -125,7 +119,6 @@ public class PeerApp {
     }
 
     /** Starts ItemGenerator */
-
     private static void startGenerator() {
 
         myPeerServer.setDirectory(sharedDirPath);

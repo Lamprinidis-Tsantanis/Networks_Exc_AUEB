@@ -113,6 +113,7 @@ public class ClientHandler implements Runnable {
             case GET_AUCTION_DETAILS -> handleGetAuctionDetails(request);
             case PLACE_BID -> handlePlaceBid(request);
             case CONFIRM_OWNERSHIP -> handleOwnership(request);
+            case CANCEL_TRANSACTION -> handleCancelTransaction(request);
 
             // Clients should NOT send SUCCESS/ERROR
             default -> error("Unsupported message type: " + request.getType());
@@ -248,6 +249,7 @@ public class ClientHandler implements Runnable {
                 resp.put("remaining_time", details[2]);
                 resp.put("total_duration", details[3]);
                 resp.put("object_id", details[4]);
+                resp.put("seller_reputation", details[5]);
                 return resp;
             }
         }
@@ -284,10 +286,42 @@ public class ClientHandler implements Runnable {
             return error("Session not found or already expired.");
         }
 
+        /**
+         * INCREASING REPUTATION
+         */
+        String buyerUsername = dataStore.getUsernameByToken(token);
+        dataStore.updateReputation(buyerUsername, true);
+        System.out.println(TAG + "> Reputation updated (+β) for user: " + buyerUsername);
+
         System.out.println(TAG + "> Ownership of item " + objectId
                 + " confirmed for token: " + token);
 
         return success("Ownership confirmed. Item registered to buyer.");
+    }
+
+    private Message handleCancelTransaction(Message request) {
+        String token = request.getString("token");
+        String objectId = request.getString("object_id");
+
+        if (token == null || objectId == null) {
+            return error("Missing token or object_id in cancellation.");
+        }
+
+        if (!dataStore.isSessionActive(token)) {
+            return error("Session not found or already expired.");
+        }
+
+        /**
+         * DECREASING REPUTATION
+         */
+        String buyerUsername = dataStore.getUsernameByToken(token);
+        dataStore.updateReputation(buyerUsername, false);
+        System.out.println(
+                TAG + "> Reputation updated (-β) for user: " + buyerUsername + " due to transaction cancellation.");
+
+        // TODO transfer the item to the second highest bidder
+
+        return success("Transaction cancellation recorded.");
     }
 
     // ----------------------------------------------------------------
