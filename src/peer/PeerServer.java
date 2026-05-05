@@ -1,14 +1,15 @@
 package peer;
 
 import models.Message;
+import models.UdpPacket;
+
+import java.io.*;
+import java.net.*;
 import java.nio.file.Paths;
 import java.nio.file.Path;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -78,7 +79,11 @@ public class PeerServer extends Thread {
 
         @Override
         public void run() {
+            ObjectOutputStream out = null;
+
             try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+                out = new ObjectOutputStream(socket.getOutputStream());
+                out.flush();
 
                 Message request = (Message) in.readObject();
                 if (request == null || request.getType() == null)
@@ -89,29 +94,55 @@ public class PeerServer extends Thread {
                     case TRANSACTION:
                         System.out.println("[PeerServer]> Received TRANSACTION request from a buyer.");
                         String objId = request.getString("object_id");
+                        int buyerUdpPort = ((Number) request.get("buyer_udp_port")).intValue();
                         Path filePath = Paths.get(directoryPath, objId + ".txt");
+                        String buyerIp = socket.getInetAddress().getHostAddress();
 
-                        try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
-                            try {
-                                String fileContent = new String(Files.readAllBytes(filePath));
+                        try {
+                            // Check if file exists first
+                            if (!Files.exists(filePath)) {
+                                Message errorMsg = new Message(Message.MessageType.ERROR);
+                                errorMsg.put("message", "File not found: " + objId);
+                                out.writeObject(errorMsg);
+                                out.flush();
+                                System.err.println("[PeerServer]> File not found: " + filePath);
+                                break;
+                            }
 
+                            String fileContent = new String(Files.readAllBytes(filePath));
+
+                            // Create a UDP socket for file transfer
+                            try (DatagramSocket udpSocket = new DatagramSocket()) {
+                                int sellerUdpPort = udpSocket.getLocalPort();
+
+                                // Send TCP response with seller's UDP port
                                 Message successMsg = new Message(Message.MessageType.SUCCESS);
-                                successMsg.put("file_data", fileContent);
+                                successMsg.put("seller_udp_port", sellerUdpPort);
+                                successMsg.put("file_size", Files.size(filePath));
 
                                 out.writeObject(successMsg);
                                 out.flush();
-                                System.out.println("[PeerServer]> Sent file contents for " + objId + " to buyer.");
+                                System.out.println("[PeerServer]> Confirmed transaction. Starting UDP transfer on port: " + sellerUdpPort);
 
+                                // Send file via UDP using Go-Back-N
+                                sendFileUdp(udpSocket, buyerIp, buyerUdpPort, fileContent.getBytes(), objId);
+
+                                // delete after successful transfer
                                 Files.delete(filePath);
-                                System.out.println("[PeerServer]> Deleted local file: " + filePath.getFileName());
-
-                            } catch (IOException e) {
-                                Message errorMsg = new Message(Message.MessageType.ERROR);
-                                errorMsg.put("message", "Seller could not read or find the file.");
-                                out.writeObject(errorMsg);
-                                out.flush();
-                                System.err.println("[PeerServer]> Failed transaction for " + objId + ": " + e.getMessage());
+                                System.out.println("[PeerServer]> File sent and deleted: " + filePath.getFileName());
                             }
+
+                        } catch (IOException e) {
+                            if (out != null) {
+                                try {
+                                    Message errorMsg = new Message(Message.MessageType.ERROR);
+                                    errorMsg.put("message", "Seller could not read or find the file: " + e.getMessage());
+                                    out.writeObject(errorMsg);
+                                    out.flush();
+                                } catch (IOException ignored) {
+                                }
+                            }
+                            System.err.println("[PeerServer]> Failed transaction for " + objId + ": " + e.getMessage());
                         }
                         break;
 
@@ -130,10 +161,20 @@ public class PeerServer extends Thread {
 
             } catch (java.io.EOFException e) {
                 // Client closed the connection normally
-            } catch (Exception e) {
+            }catch (SocketException e){
+                // Connection reset/aborted during normal operation - expected after file transfer
+                if (e.getMessage() != null && e.getMessage().contains("aborted")) {
+                    System.out.println("[PeerServer]> Client connection closed after transaction.");
+                } else {
+                    System.err.println("[PeerServer]> Socket error: " + e.getMessage());
+                }
+            }
+
+            catch (Exception e) {
                 System.err.println("[PeerServer]> Connection error: " + e.getMessage());
             } finally {
                 try {
+                    if (out != null) out.close();
                     socket.close();
                 } catch (IOException ignored) {
                 }
@@ -196,6 +237,107 @@ public class PeerServer extends Thread {
                     System.out.println("[PeerServer]> Unhandled AUCTION_RESULT status: " + status);
                     break;
             }
+        }
+
+        /**
+         * Sends a file via UDP using Go-Back-N protocol
+         */
+        private void sendFileUdp(DatagramSocket socket, String buyerIp, int buyerPort, byte[] fileData, String objId) throws IOException {
+            final int PACKET_SIZE = 4000;  // Leave room for headers
+            final int WINDOW_SIZE = 5;
+            final int TIMEOUT_MS = 2000;
+
+            InetAddress buyerAddr = InetAddress.getByName(buyerIp);
+
+            // Split file into chunks
+            List<byte[]> chunks = splitFileIntoChunks(fileData, PACKET_SIZE);
+            int totalPackets = chunks.size();
+
+            System.out.println("[PeerServer]> Sending " + totalPackets + " packets to buyer via UDP");
+            socket.setSoTimeout(TIMEOUT_MS);
+
+            int base = 0;
+            int nextSeqNum = 0;
+
+            while (base < totalPackets) {
+                // Send packets within window
+                while (nextSeqNum < base + WINDOW_SIZE && nextSeqNum < totalPackets) {
+                    boolean isFinal = (nextSeqNum == totalPackets - 1);
+                    UdpPacket packet = new UdpPacket(nextSeqNum, chunks.get(nextSeqNum), false, isFinal);
+                    byte[] packetData = serializeUdpPacket(packet);
+
+                    DatagramPacket dgPacket = new DatagramPacket(packetData, packetData.length, buyerAddr, buyerPort);
+                    socket.send(dgPacket);
+
+                    System.out.println("[PeerServer]> Sent packet " + nextSeqNum + (isFinal ? " (FINAL)" : ""));
+                    nextSeqNum++;
+                }
+
+                // Wait for ACK
+                try {
+                    byte[] ackBuffer = new byte[1024];
+                    DatagramPacket ackPacket = new DatagramPacket(ackBuffer, ackBuffer.length);
+                    socket.receive(ackPacket);
+
+                    UdpPacket receivedAck = deserializeUdpPacket(ackPacket.getData());
+                    if (receivedAck.getIsAck()) {
+                        int ackNum = receivedAck.getSeqId();
+                        System.out.println("[PeerServer]> Received ACK " + ackNum);
+
+                        // Cumulative ACK - advance window
+                        if (ackNum >= base) {
+                            base = ackNum + 1;
+                        }
+                    }
+                } catch (SocketTimeoutException e) {
+                    System.out.println("[PeerServer]> Timeout - resending from packet " + base);
+                    nextSeqNum = base;  // Go-Back-N: reset to base
+                }
+            }
+
+            System.out.println("[PeerServer]> File transfer complete for: " + objId);
+        }
+
+        /**
+         * Splits file data into chunks for UDP transmission
+         */
+        private List<byte[]> splitFileIntoChunks(byte[] fileData, int chunkSize) {
+            List<byte[]> chunks = new ArrayList<>();
+            int offset = 0;
+
+            while (offset < fileData.length) {
+                int length = Math.min(chunkSize, fileData.length - offset);
+                byte[] chunk = new byte[length];
+                System.arraycopy(fileData, offset, chunk, 0, length);
+                chunks.add(chunk);
+                offset += length;
+            }
+
+            return chunks;
+        }
+
+        /**
+         * Deserializes a UDP packet from bytes
+         */
+        private UdpPacket deserializeUdpPacket(byte[] data) throws IOException {
+            try {
+                ByteArrayInputStream bais = new ByteArrayInputStream(data);
+                ObjectInputStream ois = new ObjectInputStream(bais);
+                return (UdpPacket) ois.readObject();
+            } catch (ClassNotFoundException e) {
+                throw new IOException("Failed to deserialize UDP packet", e);
+            }
+        }
+
+        /**
+         * Serializes a UDP packet to bytes
+         */
+        private byte[] serializeUdpPacket(UdpPacket packet) throws IOException {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ObjectOutputStream oos = new ObjectOutputStream(baos);
+            oos.writeObject(packet);
+            oos.flush();
+            return baos.toByteArray();
         }
     }
 }

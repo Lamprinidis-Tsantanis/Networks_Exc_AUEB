@@ -36,7 +36,7 @@ public class ItemGenerator extends Thread {
                 //calculating random time
                 double rand = Math.random();
                 long sleepTimeMs = (long) (rand * 120 * 1000);
-                System.out.println("[ItemGenerator]> Next item will be generated in " + (sleepTimeMs / 1000) + " seconds.");
+                //System.out.println("[ItemGenerator]> Next item will be generated in " + (sleepTimeMs / 1000) + " seconds.");
                 Thread.sleep(sleepTimeMs);
 
                 //create item
@@ -48,7 +48,7 @@ public class ItemGenerator extends Thread {
 
                 //saves item to directory
                 item.toFile(sharedDirectory);
-                System.out.println("[ItemGenerator]> Created and saved new item: " + objectId);
+                //System.out.println("[ItemGenerator]> Created and saved new item: " + objectId);
 
                 //notify server
                 sendAuctionRequest(item);
