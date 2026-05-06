@@ -68,7 +68,11 @@ public class ClientHandler implements Runnable {
             closeQuietly();
         }
     }
-
+    /**
+     * Attempts to deserialize one Message from the stream.
+     *
+     * @return the Message, or null if the stream is closed / class is unknown.
+     */
     private Message readMessage(ObjectInputStream in, String clientAddress) {
         try {
             return (Message) in.readObject();
@@ -80,7 +84,9 @@ public class ClientHandler implements Runnable {
             return null;
         }
     }
-
+    /**
+     * Dispatches the request to the correct handler based on its MessageType.
+     */
     private Message route(Message request, String clientAddress, int clientPort) {
         return switch (request.getType()) {
             case REGISTER -> handleRegister(request);
@@ -292,7 +298,11 @@ public class ClientHandler implements Runnable {
 
         return success("Transaction cancellation recorded.");
     }
-
+    /**
+     * Serializes a Message to the output stream.
+     * Calls reset() after every write so that updated objects are not served
+     * from ObjectOutputStream's internal reference cache on subsequent sends.
+     */
     private void send(ObjectOutputStream out, Message message) {
         synchronized (this) {
             try {
@@ -304,7 +314,13 @@ public class ClientHandler implements Runnable {
             }
         }
     }
-
+    /**
+     * Sends a Message to the client.
+     * Called by AuctionManagerThread to broadcast auction updates.
+     *
+     * @param message The message to send to the client
+     * @throws IOException if the send fails
+     */
     public synchronized void sendMessage(Message message) throws IOException {
         if (out != null) {
             out.writeObject(message);

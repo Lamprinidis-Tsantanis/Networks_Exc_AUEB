@@ -30,7 +30,14 @@ public class AuctionManager {
     public AuctionManager(DataStore dataStore) {
         this.dataStore = dataStore;
     }
-
+    /**
+     * Validates the tokenId and adds items into the auctionQueue.
+     *
+     * @param tokenId  token of the user requesting auction.
+     * @param itemList List of items that a user is putting in auction.
+     * @return {@code true} if the tokenId is successfully validated and the list
+     *         contains items, {@code false} otherwise.
+     */
     public boolean getAuctionRequest(String tokenId, List<Item> itemList) {
         String error = "[AuctionManager]> ERROR while trying to add items to AuctionList: ";
         if (!dataStore.isSessionActive(tokenId)) {
@@ -47,7 +54,11 @@ public class AuctionManager {
         System.out.println("[AuctionManager]> Received " + itemList.size() + " items from session " + tokenId);
         return true;
     }
-
+    /**
+     * Continuously dequeues items and runs one auction at a time.
+     * Blocks on dequeueItem() when the queue is empty, and waits for the
+     * auction thread to finish before starting the next one.
+     */
     public void startAuction() throws InterruptedException {
         while (true) {
             activeAuctions.removeIf(thread -> !thread.isActive());
@@ -172,7 +183,17 @@ public class AuctionManager {
         }
         return result;
     }
-
+    /**
+     * Retrieves details of the currently active auction.
+     * Also triggers a seller liveness check before returning data.
+     *
+     * @return {@code List<Object[]>} where each List item has sellerTokenId at [0],
+     *         highestBid at [1],
+     *         remainingTime in seconds at [2], startingTime of the auction [3]
+     *         and the objectID at [4]
+     *         or {@code null} if no auction is
+     *         active.
+     */
     public List<Object[]> getAllAuctionDetails() {
         activeAuctions.removeIf(thread -> !thread.isActive());
         List<Object[]> result = new ArrayList<>();
@@ -193,7 +214,14 @@ public class AuctionManager {
         }
         return result;
     }
-
+    /**
+     * Checks whether the seller identified by sellerTokenId is still reachable
+     * by attempting a connection to their PeerServer p2p port.
+     * If the seller has disconnected, the active auction is cancelled and all
+     * current bidders are notified.
+     *
+     * @param sellerTokenId The token of the seller to check.
+     */
     public void checkActive(String sellerTokenId) {
         DataStore.SessionRecord sellerSession = dataStore.getSession(sellerTokenId);
 
@@ -237,7 +265,9 @@ public class AuctionManager {
             }
         }
     }
-
+    /**
+     * Sends an AUCTION_CANCELLED notification to each bidder's PeerServer p2p port.
+     */
     public void notifyBiddersAuctionCancelled(java.util.Set<String> bidders) {
         if (bidders == null || bidders.isEmpty())
             return;
