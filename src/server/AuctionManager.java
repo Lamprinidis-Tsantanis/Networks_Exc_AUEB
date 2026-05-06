@@ -57,7 +57,7 @@ public class AuctionManager {
                 activeAuctions.removeIf(thread -> !thread.isActive());
             }
 
-            DataStore.AuctionEntry nextAuctionEntry = dataStore.dequeueItem();
+            DataStore.AuctionEntry nextAuctionEntry = dataStore.dequeueItemWithReputation();
             Item nextItem = nextAuctionEntry.auctionItem;
             String sellerToken = nextAuctionEntry.sellerTokenId;
 
