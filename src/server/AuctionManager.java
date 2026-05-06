@@ -5,24 +5,32 @@ import models.Message;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class AuctionManager {
     private final DataStore dataStore;
     private final List<AuctionManagerThread> activeAuctions = new ArrayList<>();
     private static final int MAX_CONCURRENT_AUCTIONS = 2;
 
+    public static class AuctionHistory {
+        public final Item item;
+        public final String sellerToken;
+        public final ConcurrentHashMap<String, Double> bids;
+
+        public AuctionHistory(Item item, String sellerToken, ConcurrentHashMap<String, Double> bids) {
+            this.item = item;
+            this.sellerToken = sellerToken;
+            this.bids = bids;
+        }
+    }
+
+    // map to store the history of each item
+    private final ConcurrentHashMap<String, AuctionHistory> historyMap = new ConcurrentHashMap<>();
+
     public AuctionManager(DataStore dataStore) {
         this.dataStore = dataStore;
     }
 
-    /**
-     * Validates the tokenId and adds items into the auctionQueue.
-     *
-     * @param tokenId  token of the user requesting auction.
-     * @param itemList List of items that a user is putting in auction.
-     * @return {@code true} if the tokenId is successfully validated and the list
-     *         contains items, {@code false} otherwise.
-     */
     public boolean getAuctionRequest(String tokenId, List<Item> itemList) {
         String error = "[AuctionManager]> ERROR while trying to add items to AuctionList: ";
         if (!dataStore.isSessionActive(tokenId)) {
@@ -40,12 +48,6 @@ public class AuctionManager {
         return true;
     }
 
-    /**
-     * Continuously dequeues items and runs one auction at a time.
-     * Blocks on dequeueItem() when the queue is empty, and waits for the
-     * auction thread to finish before starting the next one.
-     */
-    // TODO one at a time ?
     public void startAuction() throws InterruptedException {
         while (true) {
             activeAuctions.removeIf(thread -> !thread.isActive());
@@ -55,7 +57,7 @@ public class AuctionManager {
                 activeAuctions.removeIf(thread -> !thread.isActive());
             }
 
-            DataStore.AuctionEntry nextAuctionEntry = dataStore.dequeueItem();
+            DataStore.AuctionEntry nextAuctionEntry = dataStore.dequeueItemWithReputation();
             Item nextItem = nextAuctionEntry.auctionItem;
             String sellerToken = nextAuctionEntry.sellerTokenId;
 
@@ -73,22 +75,89 @@ public class AuctionManager {
         }
     }
 
-    public void onAuctionComplete(Item item, String winnerToken, double finalBid) {
+    public void onAuctionComplete(Item item, String winnerToken, double finalBid, String sellerToken,
+            ConcurrentHashMap<String, Double> bids) {
         System.out.println("[AuctionManager]> === AUCTION COMPLETE ===");
         System.out.println("[AuctionManager]> Item: " + item.getObjectId());
         System.out.println("[AuctionManager]> Winner: " +
                 (winnerToken != null ? winnerToken : "No bids"));
         System.out.println("[AuctionManager]> Final price: " + finalBid);
+
+        historyMap.put(item.getObjectId(), new AuctionHistory(item, sellerToken, bids));
     }
 
     /**
-     * Retrieves the object ID and description of the currently active auctions.
-     * Also triggers a seller liveness check before returning data.
+     * FALLBACK LOGIC
+     * Handles the fallback logic when a winning bidder cancels their transaction.
+     * <p>
+     * This method retrieves the bid history for the specified item, removes the
+     * bidder who canceled from the pool, and iterates through the remaining bids to
+     * find the next highest offer. It verifies that the next candidate is currently
+     * online before officially offering them the item.
+     * <p>
+     * If a valid, connected candidate is found, BOTH THE NEW BUYER AND THE SELLER
+     * are notified of the updated transaction. If the seller is offline, or if the
+     * list of bidders empties out with no active candidates, the fallback process
+     * is safely aborted and the seller (if active) is notified of the failure.
      *
-     * @return {@code List <String[]>} where for each item, objectId at [0] and
-     *         description at [1],
-     *         or {@code empty List} if no auction is active.
+     * @param objectId       The unique identifier of the auctioned item.
+     * @param cancelingToken The session token of the bidder who canceled the
+     *                       transaction.
      */
+    public void offerToNextBidder(String objectId, String cancelingToken) {
+        AuctionHistory history = historyMap.get(objectId);
+        if (history == null) {
+            System.out.println("[AuctionManager]> No history found for item: " + objectId);
+            return;
+        }
+
+        history.bids.remove(cancelingToken);
+
+        AuctionNotifier notifier = new AuctionNotifier(dataStore);
+
+        while (!history.bids.isEmpty()) {
+            String nextToken = null;
+            double maxBid = -1;
+
+            for (java.util.Map.Entry<String, Double> entry : history.bids.entrySet()) {
+                if (entry.getValue() > maxBid) {
+                    maxBid = entry.getValue();
+                    nextToken = entry.getKey();
+                }
+            }
+
+            if (nextToken == null)
+                break;
+
+            if (dataStore.isSessionActive(nextToken)) {
+                String newBuyerUsername = dataStore.getUsernameByToken(nextToken);
+                DataStore.SessionRecord sellerSession = dataStore.getSession(history.sellerToken);
+
+                if (sellerSession != null) {
+                    String sellerUsername = sellerSession.username;
+                    String sellerp2pIp = sellerSession.p2pIpAddress;
+                    Integer sellerp2pPort = sellerSession.p2pPort;
+
+                    notifier.notifyAuctionWon(nextToken, history.item, maxBid, sellerUsername, sellerp2pIp,
+                            sellerp2pPort);
+                    notifier.notifySellerSold(history.sellerToken, history.item, maxBid, newBuyerUsername, nextToken);
+
+                    System.out.println("[AuctionManager]> Item " + objectId + " offered to next highest bidder: "
+                            + newBuyerUsername + " for " + maxBid);
+                    return;
+                } else {
+                    System.out.println("[AuctionManager]> Seller offline during fallback. Canceling fallback.");
+                    return;
+                }
+            } else {
+                history.bids.remove(nextToken);
+            }
+        }
+
+        notifier.notifySellerNoBids(history.sellerToken, history.item);
+        System.out.println("[AuctionManager]> No valid candidates left for item: " + objectId);
+    }
+
     public List<String[]> getAllCurrentAuctions() {
         activeAuctions.removeIf(thread -> !thread.isActive());
         List<String[]> result = new ArrayList<>();
@@ -104,17 +173,6 @@ public class AuctionManager {
         return result;
     }
 
-    /**
-     * Retrieves details of the currently active auction.
-     * Also triggers a seller liveness check before returning data.
-     *
-     * @return {@code List<Object[]>} where each List item has sellerTokenId at [0],
-     *         highestBid at [1],
-     *         remainingTime in seconds at [2], startingTime of the auction [3]
-     *         and the objectID at [4]
-     *         or {@code null} if no auction is
-     *         active.
-     */
     public List<Object[]> getAllAuctionDetails() {
         activeAuctions.removeIf(thread -> !thread.isActive());
         List<Object[]> result = new ArrayList<>();
@@ -136,19 +194,10 @@ public class AuctionManager {
         return result;
     }
 
-    /**
-     * Checks whether the seller identified by sellerTokenId is still reachable
-     * by attempting a connection to their PeerServer p2p port.
-     * If the seller has disconnected, the active auction is cancelled and all
-     * current bidders are notified.
-     *
-     * @param sellerTokenId The token of the seller to check.
-     */
     public void checkActive(String sellerTokenId) {
         DataStore.SessionRecord sellerSession = dataStore.getSession(sellerTokenId);
 
         if (sellerSession == null) {
-            // Seller logged out - cancel ALL their auctions
             System.out.println(
                     "[AuctionManager]> Seller " + sellerTokenId + " logged out. Cancelling all their auctions.");
 
@@ -162,7 +211,7 @@ public class AuctionManager {
             }
             return;
         }
-        // Check if seller is still reachable via network
+
         boolean isAlive = true;
         try (java.net.Socket socket = new java.net.Socket()) {
             socket.connect(new java.net.InetSocketAddress(sellerSession.p2pIpAddress, sellerSession.p2pPort), 2000);
@@ -189,9 +238,6 @@ public class AuctionManager {
         }
     }
 
-    /**
-     * Sends an AUCTION_CANCELLED notification to each bidder's PeerServer p2p port.
-     */
     public void notifyBiddersAuctionCancelled(java.util.Set<String> bidders) {
         if (bidders == null || bidders.isEmpty())
             return;

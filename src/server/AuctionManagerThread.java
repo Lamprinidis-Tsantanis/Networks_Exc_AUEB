@@ -20,6 +20,7 @@ public class AuctionManagerThread extends Thread {
     private double highestBid;
     private String highestBidderToken;
     private final ReentrantLock bidLock = new ReentrantLock();
+    private final ConcurrentHashMap<String, Double> bidderHighestBids = new ConcurrentHashMap<>();
     // timer
     private volatile long auctionTimeLeft;
     private volatile boolean active;
@@ -38,10 +39,6 @@ public class AuctionManagerThread extends Thread {
         this.sellerToken = sellerToken;
         this.tag = "[Auction:" + item.getObjectId() + "]";
     }
-
-    // ----------------------------------------------------------------
-    // Getters
-    // ----------------------------------------------------------------
 
     public Item getAuctioningItem() {
         return auctioningItem;
@@ -66,10 +63,6 @@ public class AuctionManagerThread extends Thread {
     public Set<String> getActiveBidders() {
         return activeBidders;
     }
-
-    // ----------------------------------------------------------------
-    // Auction lifecycle
-    // ----------------------------------------------------------------
 
     public void cancelAuction() {
         this.cancelled = true;
@@ -135,7 +128,6 @@ public class AuctionManagerThread extends Thread {
                             highestBidderToken);
 
                     dataStore.addSellerCount(sellerUsername);
-                    dataStore.addBidderCount(winnerUsername);
 
                     System.out.println(tag + " Sold to: " + winnerUsername
                             + " | Final price: " + highestBid);
@@ -155,7 +147,8 @@ public class AuctionManagerThread extends Thread {
                 highestBidderToken = null; // Clear token so AuctionManager knows it failed
             }
 
-            auctionManager.onAuctionComplete(auctioningItem, highestBidderToken, highestBid);
+            auctionManager.onAuctionComplete(auctioningItem, highestBidderToken, highestBid, sellerToken,
+                    bidderHighestBids);
 
         } finally {
             bidLock.unlock();
@@ -182,6 +175,8 @@ public class AuctionManagerThread extends Thread {
             this.highestBid = bidAmount;
             this.highestBidderToken = tokenId;
             activeBidders.add(tokenId);
+
+            bidderHighestBids.put(tokenId, bidAmount);
 
             String bidderUsername = dataStore.getUsernameByToken(tokenId);
             System.out.println(tag + " New bid placed: " + bidAmount

@@ -234,4 +234,54 @@ public class DataStore {
     public java.util.concurrent.ConcurrentHashMap<String, SessionRecord> getActiveSessions() {
         return activeSessions;
     }
+
+    /**
+     * Safely dequeues the next item for auction by comparing the reputation scores
+     * of the owners of the first two items in the queue.
+     * <p>
+     * This method blocks until at least one item is available. If a second item
+     * exists in the queue, it compares the reputation scores of the two sellers.
+     * The item belonging to the seller with the higher (or equal) reputation is
+     * selected, while the other item is placed back at the front of the queue.
+     * <p>
+     * If the queue contains only one item, it is returned immediately without
+     * comparison.
+     *
+     * @return The {@link AuctionEntry} selected to be auctioned next based on
+     *         reputation.
+     * @throws InterruptedException if the thread is interrupted while waiting for
+     *                              an item to become available.
+     */
+    public AuctionEntry dequeueItemWithReputation() throws InterruptedException {
+        AuctionEntry firstItem = auctionQueue.take();
+        AuctionEntry secondItem = auctionQueue.poll();
+
+        if (secondItem == null) {
+            return firstItem;
+        }
+
+        String firstTokenId = firstItem.sellerTokenId;
+        String secondTokenId = secondItem.sellerTokenId;
+
+        String firstUsername = getUsernameByToken(firstTokenId);
+        String secondUsername = getUsernameByToken(secondTokenId);
+
+        double firstScore = getReputation(firstUsername);
+        double secondScore = getReputation(secondUsername);
+
+        if (firstScore < secondScore) {
+            auctionQueue.addFirst(firstItem);
+            System.out.println("Promoting item " +
+                    secondItem.auctionItem.getObjectId()
+                    + " over item " + firstItem.auctionItem.getObjectId()
+                    + " due to higher reputation (" + secondScore + " > " + firstScore + ")");
+            return secondItem;
+        } else {
+            auctionQueue.addFirst(secondItem);
+            System.out.println("Promoting item " + firstItem.auctionItem.getObjectId()
+                    + " over item " + secondItem.auctionItem.getObjectId()
+                    + " due to higher reputation (" + firstScore + " > " + secondScore + ")");
+            return firstItem;
+        }
+    }
 }
