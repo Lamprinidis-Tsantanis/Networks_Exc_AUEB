@@ -71,6 +71,7 @@ public class AuctionNotifier {
                 broadcastMessageToClient(activeClientToken, updateMsg);
             }
         }
+        System.out.println("[AuctionNotifier]> \"newBid\" Message sent to all ");
     }
 
     public Message createSuccessMessage(String text) {
@@ -99,7 +100,7 @@ public class AuctionNotifier {
         if (handler != null) {
             try {
                 handler.sendMessage(message);
-                System.out.println("[AuctionNotifier]> Message sent to client: " + tokenId);
+                //System.out.println("[AuctionNotifier]> Message sent to client: " + tokenId);
             } catch (Exception e) {
                 System.err.println("[AuctionNotifier]> Failed to send message to " + tokenId +
                         ": " + e.getMessage());

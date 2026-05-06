@@ -243,8 +243,8 @@ public class PeerServer extends Thread {
          * Sends a file via UDP using Go-Back-N protocol
          */
         private void sendFileUdp(DatagramSocket socket, String buyerIp, int buyerPort, byte[] fileData, String objId) throws IOException {
-            final int PACKET_SIZE = 4000;  // Leave room for headers
-            final int WINDOW_SIZE = 5;
+            final int PACKET_SIZE = 64;
+            final int WINDOW_SIZE = 3;
             final int TIMEOUT_MS = 2000;
 
             InetAddress buyerAddr = InetAddress.getByName(buyerIp);

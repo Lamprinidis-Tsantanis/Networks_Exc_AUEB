@@ -11,6 +11,8 @@ import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Random;
+
 
 public class TransactionHandler implements Runnable {
     private String objectId;
@@ -19,6 +21,7 @@ public class TransactionHandler implements Runnable {
     private int sellerTransPort;
     private String sharedDir;
     private AuctionClient auctionClient;
+    private static final Random RAND = new Random();
 
     private static final int CONNECTION_TIMEOUT = 10000;
     private static final int SOCKET_TIMEOUT = 5000;
@@ -147,14 +150,22 @@ public class TransactionHandler implements Runnable {
         int expectedSeqId = 0;
         java.util.List<byte[]> fileChunks = new java.util.ArrayList<>();
         boolean lastPacketReceived = false;
+        long finalAckSentTime = -1;
+        final long FINAL_ACK_TIMER_MS = 3000; // 3 seconds to wait after sending final ACK
 
         System.out.println("[TransactionHandler]> Starting GBN UDP receiver on port: " + mySocket.getLocalPort());
         mySocket.setSoTimeout(5000);
 
         java.net.InetAddress sellerAddr = java.net.InetAddress.getByName(sellerTransIp);
 
-        while (!lastPacketReceived) {
+        while (true) {
             try {
+                // If final ACK was sent and timer expired, exit
+                if (lastPacketReceived && System.currentTimeMillis() > finalAckSentTime) {
+                    System.out.println("[TransactionHandler]> Final ACK timer expired, exiting");
+                    break;
+                }
+
                 // Receive packet
                 byte[] receiveBuffer = new byte[4096];
                 DatagramPacket dgPacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
@@ -164,7 +175,18 @@ public class TransactionHandler implements Runnable {
                 models.UdpPacket receivedPkt = deserializeUdpPacket(dgPacket.getData());
 
                 // GBN Logic: Check if packet is in-order
-                if (receivedPkt.getSeqId() == expectedSeqId) {
+                boolean netIsWorking=networkIsWorking();
+
+                // Handle retransmitted final packet
+                if (lastPacketReceived && receivedPkt.getIsFinal()) {
+                    if (netIsWorking) {
+                        System.out.println("[TransactionHandler]> Received retransmitted FINAL packet, re-ACKing");
+                        sendAckToSeller(mySocket, expectedSeqId - 1, sellerAddr, sellerPort);
+                    } else {
+                        System.out.println("[TransactionHandler]> Received retransmitted final packet but discarding (simulating loss)");
+                    }
+                }
+                else if (receivedPkt.getSeqId() == expectedSeqId && netIsWorking ) {
                     // ===== IN-ORDER PACKET =====
                     fileChunks.add(receivedPkt.getPayload());
                     System.out.println("[TransactionHandler]> Received packet " + expectedSeqId + " (in-order)");
@@ -180,17 +202,30 @@ public class TransactionHandler implements Runnable {
                     // Send cumulative ACK for this in-order packet
                     sendAckToSeller(mySocket, expectedSeqId - 1, sellerAddr, sellerPort);
 
-                } else {
-                    // ===== OUT-OF-ORDER PACKET =====
+                    // Start timer when we send the final ACK
+                    if (receivedPkt.getIsFinal()) {
+                        finalAckSentTime = System.currentTimeMillis() + FINAL_ACK_TIMER_MS;
+                        System.out.println("[TransactionHandler]> Final ACK sent, timer started ("
+                                + FINAL_ACK_TIMER_MS + "ms)");
+                    }
+
+                } else if(netIsWorking) {
+                    // out of order packet
                     System.out.println("[TransactionHandler]> Received out-of-order packet "
                             + receivedPkt.getSeqId() + " (expected " + expectedSeqId + "), discarding");
 
                     // Resend last cumulative ACK (triggers sender's Go-Back-N)
                     sendAckToSeller(mySocket, expectedSeqId - 1, sellerAddr, sellerPort);
+                } else if (!netIsWorking) {
+                    System.out.println("[TransactionHandler]> Received packet ("+receivedPkt.getSeqId()+") and discarded it (simulating loss)");
                 }
 
             } catch (java.net.SocketTimeoutException e) {
-                throw new TransactionException("Timeout waiting for packet " + expectedSeqId);
+                // Socket timeout is normal - just loop again
+                if (!lastPacketReceived) {
+                    throw new TransactionException("Timeout waiting for packet " + expectedSeqId);
+                }
+                // Otherwise just continue looping until final ACK timer expires
             }
         }
 
@@ -201,17 +236,21 @@ public class TransactionHandler implements Runnable {
     }
 
     private void sendAckToSeller(DatagramSocket mySocket, int seqId, java.net.InetAddress sellerAddr, int sellerPort) throws TransactionException {
-        try {
-            // Create ACK packet (cumulative - acks all packets up to seqId)
-            models.UdpPacket ackPacket = models.UdpPacket.createAck(seqId);
-            byte[] ackData = serializeUdpPacket(ackPacket);
+        if (networkIsWorking()) {
+            try {
+                // Create ACK packet (cumulative - acks all packets up to seqId)
+                models.UdpPacket ackPacket = models.UdpPacket.createAck(seqId);
+                byte[] ackData = serializeUdpPacket(ackPacket);
 
-            DatagramPacket dgAck = new DatagramPacket(ackData, ackData.length, sellerAddr, sellerPort);
-            mySocket.send(dgAck);
+                DatagramPacket dgAck = new DatagramPacket(ackData, ackData.length, sellerAddr, sellerPort);
+                mySocket.send(dgAck);
 
-            System.out.println("[TransactionHandler]> Sent cumulative ACK(" + seqId + ")");
-        } catch (IOException e) {
-            System.err.println("[TransactionHandler]> Failed to send ACK: " + e.getMessage());
+                System.out.println("[TransactionHandler]> Sent cumulative ACK(" + seqId + ")");
+            } catch (IOException e) {
+                System.err.println("[TransactionHandler]> Failed to send ACK: " + e.getMessage());
+            }
+        }else{
+            System.out.println("[TransactionHandler]> Failed to send ACK("+ seqId+") (simulated) ");
         }
     }
 
@@ -285,6 +324,10 @@ public class TransactionHandler implements Runnable {
         }
 
         System.out.println("[TransactionHandler]> AuctionServer confirmed new ownership of: " + objectId);
+    }
+
+    private boolean networkIsWorking() {
+        return RAND.nextDouble() < 0.80;
     }
 
     public static class TransactionException extends Exception {
