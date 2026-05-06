@@ -36,10 +36,6 @@ public class ClientHandler implements Runnable {
         this.dataStore = dataStore;
     }
 
-    // ----------------------------------------------------------------
-    // Main loop
-    // ----------------------------------------------------------------
-
     @Override
     public void run() {
         String clientAddress = socket.getInetAddress().getHostAddress();
@@ -73,11 +69,6 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    /**
-     * Attempts to deserialize one Message from the stream.
-     *
-     * @return the Message, or null if the stream is closed / class is unknown.
-     */
     private Message readMessage(ObjectInputStream in, String clientAddress) {
         try {
             return (Message) in.readObject();
@@ -85,44 +76,26 @@ public class ClientHandler implements Runnable {
             System.err.println(TAG + "> Unknown class from " + clientAddress + ": " + e.getMessage());
             return null;
         } catch (IOException e) {
-            // Normal EOF when the peer closes the connection — not an error.
             System.out.println(TAG + "> Client disconnected: " + clientAddress);
             return null;
         }
     }
 
-    // ----------------------------------------------------------------
-    // Router
-    // ----------------------------------------------------------------
-
-    /**
-     * Dispatches the request to the correct handler based on its MessageType.
-     */
     private Message route(Message request, String clientAddress, int clientPort) {
         return switch (request.getType()) {
-
-            // -- Account management --
             case REGISTER -> handleRegister(request);
             case LOGIN -> handleLogin(request, clientAddress, clientPort);
             case LOGOUT -> handleLogout(request);
             case CHECK_ACTIVE -> handleCheckActive(request);
-
-            // -- Auction management --
             case REQUEST_AUCTION -> handleRequestAuction(request);
             case GET_CURRENT_AUCTION -> handleGetCurrentAuctions(request);
             case GET_AUCTION_DETAILS -> handleGetAuctionDetails(request);
             case PLACE_BID -> handlePlaceBid(request);
             case CONFIRM_OWNERSHIP -> handleOwnership(request);
             case CANCEL_TRANSACTION -> handleCancelTransaction(request);
-
-            // Clients should NOT send SUCCESS/ERROR
             default -> error("Unsupported message type: " + request.getType());
         };
     }
-
-    // ----------------------------------------------------------------
-    // Account handlers
-    // ----------------------------------------------------------------
 
     private Message handleRegister(Message req) {
         String username = req.getString("username");
@@ -159,7 +132,7 @@ public class ClientHandler implements Runnable {
         }
 
         if (username == null || password == null || p2pIpAddress == null || p2pPort == null) {
-            return error("Missing username, password, or peer listening info."); // <--- UPDATED
+            return error("Missing username, password, or peer listening info.");
         }
 
         username = username.toLowerCase();
@@ -201,13 +174,8 @@ public class ClientHandler implements Runnable {
         return resp;
     }
 
-    // ----------------------------------------------------------------
-    // Auction handlers
-    // ----------------------------------------------------------------
-
     private Message handleRequestAuction(Message req) {
         String token = req.getString("token");
-        // Warning: This assumes the client passed a List<Item> inside the payload
         @SuppressWarnings("unchecked")
         java.util.List<models.Item> items = (java.util.List<models.Item>) req.get("items");
 
@@ -223,7 +191,6 @@ public class ClientHandler implements Runnable {
             return error("No active auctions.");
         }
         Message resp = success("Current auctions retrieved.");
-        // Create a list of auction objects
         List<Map<String, String>> auctionList = new ArrayList<>();
         for (String[] auction : auctions) {
             Map<String, String> auctionMap = new HashMap<>();
@@ -260,7 +227,6 @@ public class ClientHandler implements Runnable {
         String token = req.getString("token");
         String objectId = req.getString("object_id");
 
-        // Safely extract double from the payload
         Double bidAmount = null;
         Object val = req.get("bid_amount");
         if (val instanceof Double)
@@ -285,6 +251,8 @@ public class ClientHandler implements Runnable {
         if (!dataStore.isSessionActive(token)) {
             return error("Session not found or already expired.");
         }
+
+        dataStore.addBidderCount(dataStore.getUsernameByToken(token));
 
         /**
          * INCREASING REPUTATION
@@ -319,20 +287,12 @@ public class ClientHandler implements Runnable {
         System.out.println(
                 TAG + "> Reputation updated (-β) for user: " + buyerUsername + " due to transaction cancellation.");
 
-        // TODO transfer the item to the second highest bidder
+        // --- ΑΛΛΑΓΗ: TRIGGER FALLBACK LOGIC ---
+        auctionManager.offerToNextBidder(objectId, token);
 
         return success("Transaction cancellation recorded.");
     }
 
-    // ----------------------------------------------------------------
-    // Helpers
-    // ----------------------------------------------------------------
-
-    /**
-     * Serializes a Message to the output stream.
-     * Calls reset() after every write so that updated objects are not served
-     * from ObjectOutputStream's internal reference cache on subsequent sends.
-     */
     private void send(ObjectOutputStream out, Message message) {
         synchronized (this) {
             try {
@@ -345,13 +305,6 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    /**
-     * Sends a Message to the client.
-     * Called by AuctionManagerThread to broadcast auction updates.
-     *
-     * @param message The message to send to the client
-     * @throws IOException if the send fails
-     */
     public synchronized void sendMessage(Message message) throws IOException {
         if (out != null) {
             out.writeObject(message);
