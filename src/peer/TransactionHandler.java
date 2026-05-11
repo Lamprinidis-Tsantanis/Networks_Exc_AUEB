@@ -42,7 +42,7 @@ public class TransactionHandler implements Runnable {
 
         double random = RAND.nextDouble();
 
-        if (random >= 0.7) {
+        if (random <= 0.70) {
             try {
                 System.out.println("[TransactionHandler]> Fetching from server");
                 byte[] fileBytes = fetchFileFromServer();
