@@ -13,7 +13,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Random;
 
-
 public class TransactionHandler implements Runnable {
     private String objectId;
     private double finalPrice;
@@ -27,7 +26,7 @@ public class TransactionHandler implements Runnable {
     private static final int SOCKET_TIMEOUT = 5000;
 
     public TransactionHandler(String sellerIp, int sellerPort, String objectId, double winningBid,
-                              String sharedDirectory, AuctionClient auctionClient) {
+            String sharedDirectory, AuctionClient auctionClient) {
         this.sellerTransIp = sellerIp;
         this.sellerTransPort = sellerPort;
         this.objectId = objectId;
@@ -40,15 +39,23 @@ public class TransactionHandler implements Runnable {
     public void run() {
         System.out.println("[TransactionHandler]> Starting transaction for item: "
                 + objectId + " from seller " + sellerTransIp + ":" + sellerTransPort);
-        try {
-            System.out.println("[TransactionHandler]> Fetching from server");
-            byte[] fileBytes = fetchFileFromServer();
-            System.out.println("[TransactionHandler]> Save to Disk");
-            saveFileToDisk(fileBytes);
-            System.out.println("[TransactionHandler]> Notifying Server");
-            notifyServerOfOwnership();
-        } catch (TransactionException e) {
-            System.err.println("[TransactionHandler]> Transaction failed: " + e.getMessage());
+
+        double random = RAND.nextDouble();
+
+        if (random >= 0.7) {
+            try {
+                System.out.println("[TransactionHandler]> Fetching from server");
+                byte[] fileBytes = fetchFileFromServer();
+                System.out.println("[TransactionHandler]> Save to Disk");
+                saveFileToDisk(fileBytes);
+                System.out.println("[TransactionHandler]> Notifying Server");
+                notifyServerOfOwnership();
+            } catch (TransactionException e) {
+                System.err.println("[TransactionHandler]> Transaction failed: " + e.getMessage());
+            }
+        } else {
+            System.out.println("[TransactionHandler]> Bidder decided to cancel the bidding.");
+            notifyServerOfCancellation();
         }
     }
 
@@ -101,7 +108,8 @@ public class TransactionHandler implements Runnable {
         }
     }
 
-    public int confirmDeal(Socket socket, int myUdpPort) throws IOException, TransactionException, ClassNotFoundException {
+    public int confirmDeal(Socket socket, int myUdpPort)
+            throws IOException, TransactionException, ClassNotFoundException {
         // Send transaction request via TCP
         ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
         out.flush();
@@ -175,7 +183,7 @@ public class TransactionHandler implements Runnable {
                 models.UdpPacket receivedPkt = deserializeUdpPacket(dgPacket.getData());
 
                 // GBN Logic: Check if packet is in-order
-                boolean netIsWorking=networkIsWorking();
+                boolean netIsWorking = networkIsWorking();
 
                 // Handle retransmitted final packet
                 if (lastPacketReceived && receivedPkt.getIsFinal()) {
@@ -183,10 +191,10 @@ public class TransactionHandler implements Runnable {
                         System.out.println("[TransactionHandler]> Received retransmitted FINAL packet, re-ACKing");
                         sendAckToSeller(mySocket, expectedSeqId - 1, sellerAddr, sellerPort);
                     } else {
-                        System.out.println("[TransactionHandler]> Received retransmitted final packet but discarding (simulating loss)");
+                        System.out.println(
+                                "[TransactionHandler]> Received retransmitted final packet but discarding (simulating loss)");
                     }
-                }
-                else if (receivedPkt.getSeqId() == expectedSeqId && netIsWorking ) {
+                } else if (receivedPkt.getSeqId() == expectedSeqId && netIsWorking) {
                     // ===== IN-ORDER PACKET =====
                     fileChunks.add(receivedPkt.getPayload());
                     System.out.println("[TransactionHandler]> Received packet " + expectedSeqId + " (in-order)");
@@ -209,7 +217,7 @@ public class TransactionHandler implements Runnable {
                                 + FINAL_ACK_TIMER_MS + "ms)");
                     }
 
-                } else if(netIsWorking) {
+                } else if (netIsWorking) {
                     // out of order packet
                     System.out.println("[TransactionHandler]> Received out-of-order packet "
                             + receivedPkt.getSeqId() + " (expected " + expectedSeqId + "), discarding");
@@ -217,7 +225,8 @@ public class TransactionHandler implements Runnable {
                     // Resend last cumulative ACK (triggers sender's Go-Back-N)
                     sendAckToSeller(mySocket, expectedSeqId - 1, sellerAddr, sellerPort);
                 } else if (!netIsWorking) {
-                    System.out.println("[TransactionHandler]> Received packet ("+receivedPkt.getSeqId()+") and discarded it (simulating loss)");
+                    System.out.println("[TransactionHandler]> Received packet (" + receivedPkt.getSeqId()
+                            + ") and discarded it (simulating loss)");
                 }
 
             } catch (java.net.SocketTimeoutException e) {
@@ -235,7 +244,8 @@ public class TransactionHandler implements Runnable {
         return completeFile;
     }
 
-    private void sendAckToSeller(DatagramSocket mySocket, int seqId, java.net.InetAddress sellerAddr, int sellerPort) throws TransactionException {
+    private void sendAckToSeller(DatagramSocket mySocket, int seqId, java.net.InetAddress sellerAddr, int sellerPort)
+            throws TransactionException {
         if (networkIsWorking()) {
             try {
                 // Create ACK packet (cumulative - acks all packets up to seqId)
@@ -249,8 +259,8 @@ public class TransactionHandler implements Runnable {
             } catch (IOException e) {
                 System.err.println("[TransactionHandler]> Failed to send ACK: " + e.getMessage());
             }
-        }else{
-            System.out.println("[TransactionHandler]> Failed to send ACK("+ seqId+") (simulated) ");
+        } else {
+            System.out.println("[TransactionHandler]> Failed to send ACK(" + seqId + ") (simulated) ");
         }
     }
 
@@ -324,6 +334,22 @@ public class TransactionHandler implements Runnable {
         }
 
         System.out.println("[TransactionHandler]> AuctionServer confirmed new ownership of: " + objectId);
+    }
+
+    public void notifyServerOfCancellation() {
+        Message cancellation = new Message(MessageType.CANCEL_TRANSACTION);
+
+        cancellation.put("object_id", objectId);
+
+        Message response = auctionClient.sendAndReceive(cancellation);
+
+        if (response != null && response.getType() == MessageType.SUCCESS) {
+            System.out.println(
+                    "[TransactionHandler]> Server successfully processed the cancellation and penalized reputation.");
+        } else {
+            String errorMsg = (response != null) ? response.getString("message") : "No response";
+            System.err.println("[TransactionHandler]> Failed to notify server of cancellation: " + errorMsg);
+        }
     }
 
     private boolean networkIsWorking() {
