@@ -138,11 +138,22 @@ public class DataStore {
 
     public void updateReputation(String username, boolean isSuccessfull) {
         UserRecord record = registeredUsers.get(username);
+        double oldScore = getReputation(username);
         if (isSuccessfull) {
-            record.reputation_score = (1 - 0.25) * getReputation(username) + 0.25;
+            record.reputation_score = (1 - 0.25) * oldScore + 0.25;
+            System.out.println("\n════════════════════════════════════════════════════════════");
+            System.out.println("[DataStore]> REPUTATION INCREASED (TRANSACTION SUCCESSFUL)");
+
         } else {
             record.reputation_score = (1 - 0.25) * getReputation(username);
+            System.out.println("\n════════════════════════════════════════════════════════════");
+            System.out.println("[DataStore]> REPUTATION DECREASED (TRANSACTION CANCELLED)");
+
         }
+        System.out.println("    User: " + username);
+        System.out.println("    BEFORE: " + String.format("%.4f", oldScore));
+        System.out.println("    AFTER:  " + String.format("%.4f", record.reputation_score));
+        System.out.println("════════════════════════════════════════════════════════════\n");
     }
 
     // ----------------------------------------------------------
