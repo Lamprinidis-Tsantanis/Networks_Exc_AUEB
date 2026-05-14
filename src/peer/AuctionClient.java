@@ -337,7 +337,6 @@ public class AuctionClient {
                     double newBid;
 
                     /*
-                     * FOR PHASE 2
                      * Check the remaining_time to fing out if it is 10%
                      * and increase the value to max 20%
                      */
