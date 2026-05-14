@@ -50,8 +50,9 @@ public class PeerApp {
         myAuctionClient.startPolling();
 
         try {
-            System.out.println("[PeerApp]> App is running. It will logout and stop in 5 minutes.");
-            Thread.sleep(300000);
+            int sleepTime = 1000000;
+            System.out.println("[PeerApp]> App is running. It will logout and stop after: "+sleepTime+"ms");
+            Thread.sleep(sleepTime);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

@@ -6,7 +6,7 @@ public class UdpPacket implements Serializable {
     private final int seqId;
     private final byte[] payload;
     private final Boolean isAck;     // is this package an Ack package?
-    private final Boolean isFinal;   // Is this package the final package of the transaction
+    private final Boolean isFinal;   // Is this package the final package of the transaction (Is true on both final pack and final ack)
 
     public UdpPacket(int seqId, byte[] payload, Boolean isAck) {
         this.seqId = seqId;
