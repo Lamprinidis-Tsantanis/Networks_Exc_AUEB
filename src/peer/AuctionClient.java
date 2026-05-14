@@ -241,7 +241,7 @@ public class AuctionClient {
 
     /**
      * Starts a background polling thread that requests the currently active auction
-     * from the server every 60 seconds and evaluates bidding interest.
+     * from the server every 60 seconds and evaluates bidding interest
      */
     public void startPolling() {
         isPolling = true;
@@ -297,9 +297,9 @@ public class AuctionClient {
     /**
      * Simulates bidder interest using a 60% probability coin flip.
      * If interested, fetches auction details and places a bid using the formula:
-     * NewBid = HighestBid * (1 + RAND/10).
+     * NewBid = HighestBid * (1 + RAND/10)
      *
-     * @param objId The ID of the item currently up for auction.
+     * @param objId The ID of the item currently up for auction
      */
     public void evaluateInterest(String objId) {
         double randInterest = Math.random();
