@@ -12,9 +12,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Handles one peer connection on its own thread.
+ * Handles one peer connection on its own thread
  * Reads Message objects from the socket, routes them to the correct manager,
- * and writes the response back.
+ * and writes the response back
  */
 public class ClientHandler implements Runnable {
 
@@ -68,6 +68,7 @@ public class ClientHandler implements Runnable {
             closeQuietly();
         }
     }
+
     /**
      * Attempts to deserialize one Message from the stream.
      *
@@ -84,9 +85,7 @@ public class ClientHandler implements Runnable {
             return null;
         }
     }
-    /**
-     * Dispatches the request to the correct handler based on its MessageType.
-     */
+
     private Message route(Message request, String clientAddress, int clientPort) {
         return switch (request.getType()) {
             case REGISTER -> handleRegister(request);
@@ -293,11 +292,11 @@ public class ClientHandler implements Runnable {
         System.out.println(
                 TAG + "> Reputation updated (-β) for user: " + buyerUsername + " due to transaction cancellation.");
 
-        // --- ΑΛΛΑΓΗ: TRIGGER FALLBACK LOGIC ---
         auctionManager.offerToNextBidder(objectId, token);
 
         return success("Transaction cancellation recorded.");
     }
+
     /**
      * Serializes a Message to the output stream.
      * Calls reset() after every write so that updated objects are not served
@@ -314,6 +313,7 @@ public class ClientHandler implements Runnable {
             }
         }
     }
+
     /**
      * Sends a Message to the client.
      * Called by AuctionManagerThread to broadcast auction updates.

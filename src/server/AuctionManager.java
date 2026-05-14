@@ -24,12 +24,12 @@ public class AuctionManager {
         }
     }
 
-    // map to store the history of each item
     private final ConcurrentHashMap<String, AuctionHistory> historyMap = new ConcurrentHashMap<>();
 
     public AuctionManager(DataStore dataStore) {
         this.dataStore = dataStore;
     }
+
     /**
      * Validates the tokenId and adds items into the auctionQueue.
      *
@@ -54,6 +54,7 @@ public class AuctionManager {
         System.out.println("[AuctionManager]> Received " + itemList.size() + " items from session " + tokenId);
         return true;
     }
+
     /**
      * Continuously dequeues items and runs one auction at a time.
      * Blocks on dequeueItem() when the queue is empty, and waits for the
@@ -183,6 +184,7 @@ public class AuctionManager {
         }
         return result;
     }
+
     /**
      * Retrieves details of the currently active auction.
      * Also triggers a seller liveness check before returning data.
@@ -214,6 +216,7 @@ public class AuctionManager {
         }
         return result;
     }
+
     /**
      * Checks whether the seller identified by sellerTokenId is still reachable
      * by attempting a connection to their PeerServer p2p port.
@@ -265,8 +268,9 @@ public class AuctionManager {
             }
         }
     }
+
     /**
-     * Sends an AUCTION_CANCELLED notification to each bidder's PeerServer p2p port.
+     * Sends an AUCTION_CANCELLED notification to each bidder's PeerServer p2p port
      */
     public void notifyBiddersAuctionCancelled(java.util.Set<String> bidders) {
         if (bidders == null || bidders.isEmpty())

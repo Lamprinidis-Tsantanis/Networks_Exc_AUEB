@@ -13,7 +13,8 @@ public class AuctionNotifier {
         this.dataStore = dataStore;
     }
 
-    public void notifyAuctionWon(String winnerToken, Item item, double finalPrice, String sellerUsername, String sellerp2pIp, Integer sellerp2pPort) {
+    public void notifyAuctionWon(String winnerToken, Item item, double finalPrice, String sellerUsername,
+            String sellerp2pIp, Integer sellerp2pPort) {
         // SEND AUCTION_RESULT type AUCTION_WON to the highest bidder
         Message auctionWonMsg = new Message(Message.MessageType.AUCTION_RESULT);
         auctionWonMsg.put("message", "Congratulations! You won the auction!");
@@ -29,7 +30,8 @@ public class AuctionNotifier {
         broadcastMessageToClient(winnerToken, auctionWonMsg);
     }
 
-    public void notifySellerSold(String sellerToken, Item item, double finalPrice, String buyerUsername, String buyerToken) {
+    public void notifySellerSold(String sellerToken, Item item, double finalPrice, String buyerUsername,
+            String buyerToken) {
         // SEND AUCTION_RESULT type AUCTION_SOLD to seller
         Message auctionSoldMsg = new Message(Message.MessageType.AUCTION_RESULT);
         auctionSoldMsg.put("message", "Your item has been sold!");
@@ -93,14 +95,13 @@ public class AuctionNotifier {
      * @param message The message to send
      */
     private void broadcastMessageToClient(String tokenId, Message message) {
-        if (tokenId == null) return;
+        if (tokenId == null)
+            return;
 
-        // Check if client is in active clients map
         ClientHandler handler = dataStore.getClientHandler(tokenId);
         if (handler != null) {
             try {
                 handler.sendMessage(message);
-                //System.out.println("[AuctionNotifier]> Message sent to client: " + tokenId);
             } catch (Exception e) {
                 System.err.println("[AuctionNotifier]> Failed to send message to " + tokenId +
                         ": " + e.getMessage());

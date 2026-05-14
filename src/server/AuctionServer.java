@@ -9,7 +9,6 @@ import java.util.concurrent.Executors;
 
 /**
  * Main server entry point.
- * Opens ServerSocket and manages client connections using a Thread Pool.
  */
 public class AuctionServer {
     private final DataStore dataStore;
